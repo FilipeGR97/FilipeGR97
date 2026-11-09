@@ -25,6 +25,8 @@ Requisitos: placa de vídeo com Vulkan (GTX 900 ou mais nova). Testado numa GTX 
 | Painel de estratégia / trocar pneu do pit | Tab / PgDn | Back / D-pad ↓ |
 | Balanço de freio | [ e ] | — |
 | Câmera / olhar para trás | C / V | Y / R3 |
+
+Câmeras: atrás do piloto (padrão), olhos do piloto, T-Cam, bico, perseguição perto/longe e TV.
 | Voltar à pista | Backspace | — |
 | Pausa | Esc | Start |
 
@@ -40,7 +42,7 @@ Requisitos: placa de vídeo com Vulkan (GTX 900 ou mais nova). Testado numa GTX 
 - **Corrida**: semáforo de largada, cronometragem por setores, delta para a melhor volta, intervalos, limites de pista com penalidade,
   bandeira quadriculada e tabela de resultado.
 - **IA**: 19 adversários com traçado ideal calculado, perfil de velocidade, ultrapassagem, estratégia de pit e erros ocasionais.
-- **Câmeras**: cockpit (com halo), T-Cam, bico, perseguição perto/longe, TV.
+- **Câmeras**: atrás do piloto (padrão, halo visto por trás), olhos do piloto, T-Cam, bico, perseguição perto/longe, TV.
 - **Som por fornecedor de motor**: cada unidade de potência tem timbre próprio (sintetizado), com assobio do turbo/MGU-K, pneus, vento e zebras.
 - Modos: **Corrida rápida**, **Contra o relógio**, **Treino livre**. Menu com showroom 3D e opções (gráficos, áudio, assistências).
 

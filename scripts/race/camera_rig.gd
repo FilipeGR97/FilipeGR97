@@ -2,12 +2,12 @@ class_name CameraRig
 extends Camera3D
 ## Câmeras: cockpit (olhos do piloto, com halo), T-cam, bico, perseguição perto/longe e TV (beira da pista).
 
-enum View { COCKPIT, TCAM, NOSE, CHASE, CHASE_FAR, TV }
-const NAMES := ["Cockpit", "T-Cam", "Bico", "Perseguição", "Perseguição (longe)", "TV"]
+enum View { HELMET, COCKPIT, TCAM, NOSE, CHASE, CHASE_FAR, TV }
+const NAMES := ["Atrás do piloto", "Olhos do piloto", "T-Cam", "Bico", "Perseguição", "Perseguição (longe)", "TV"]
 
 var target: Car
 var track: Track
-var view := View.COCKPIT
+var view := View.HELMET
 var look_back := false
 var _chase_pos := Vector3.ZERO
 var _chase_dir := Vector3.FORWARD
@@ -49,15 +49,17 @@ func _process(dt: float) -> void:
 	cull_mask = 0xFFFFF & ~CarModel.HIDE_LAYER if (view == View.COCKPIT and target.is_player) else 0xFFFFF
 	var fov_set: float = Game.settings["fov"]
 	match view:
-		View.COCKPIT, View.TCAM, View.NOSE:
+		View.HELMET, View.COCKPIT, View.TCAM, View.NOSE:
 			var local := CarModel.EYE
+			if view == View.HELMET:
+				local = CarModel.HELMETCAM
 			if view == View.TCAM:
 				local = CarModel.TCAM
 			elif view == View.NOSE:
 				local = CarModel.NOSECAM
 			# cabeça balança com as forças G
 			var g := target.g_force
-			var head_target := Vector3(clampf(-g.x * 0.012, -0.05, 0.05), clampf(-g.y * 0.004, -0.02, 0.02), clampf(g.z * 0.01, -0.04, 0.04)) if view == View.COCKPIT else Vector3.ZERO
+			var head_target := Vector3(clampf(-g.x * 0.012, -0.05, 0.05), clampf(-g.y * 0.004, -0.02, 0.02), clampf(g.z * 0.01, -0.04, 0.04)) if view <= View.COCKPIT else Vector3.ZERO
 			_head = _head.lerp(head_target, minf(dt * 6.0, 1.0))
 			var pos := mxf * (local + _head)
 			var basis := mxf.basis.orthonormalized()
@@ -70,12 +72,14 @@ func _process(dt: float) -> void:
 				var wh: Car.Wheel = w
 				if wh.grounded and wh.surface != Track.Surface.ASPHALT:
 					kerb = 1.0
-			var amp := (0.0006 * clampf(spd / 90.0, 0.0, 1.0) + 0.004 * kerb * clampf(spd / 30.0, 0.0, 1.0)) * (1.0 if view == View.COCKPIT else 0.5)
+			var amp := (0.0006 * clampf(spd / 90.0, 0.0, 1.0) + 0.004 * kerb * clampf(spd / 30.0, 0.0, 1.0)) * (1.0 if view <= View.COCKPIT else 0.5)
 			pos += basis.y * sin(_shake_t * 61.0) * amp + basis.x * sin(_shake_t * 47.0) * amp * 0.6
 			global_transform = Transform3D(basis, pos)
 			if view == View.COCKPIT:
 				rotate_object_local(Vector3.RIGHT, -0.035)
-			fov = fov_set + (0.0 if view == View.COCKPIT else 6.0)
+			elif view == View.HELMET:
+				rotate_object_local(Vector3.RIGHT, -0.15)
+			fov = fov_set + (0.0 if view <= View.COCKPIT else 6.0)
 		View.CHASE, View.CHASE_FAR:
 			var dist := 6.2 if view == View.CHASE else 10.0
 			var hgt := 1.75 if view == View.CHASE else 3.0

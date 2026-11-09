@@ -9,6 +9,7 @@ extends Node3D
 
 const EYE := Vector3(0.0, 0.93, -0.06)          # olhos do piloto (câmera cockpit)
 const TCAM := Vector3(0.0, 1.16, 0.18)
+const HELMETCAM := Vector3(0.0, 1.13, 0.13)          # atrás e acima do capacete
 const NOSECAM := Vector3(0.0, 0.62, -1.55)
 const HIDE_LAYER := 1 << 19                      # capacete do jogador (oculto na câmera cockpit)
 const W_F := 0.30
