@@ -402,6 +402,7 @@ func _physics_process(dt: float) -> void:
 
 
 func _lights_go() -> void:
+	print("[corrida] largada")
 	state = "racing"
 	race_start = session_time
 	track.set_start_lights(0)
@@ -637,4 +638,12 @@ func _show_results() -> void:
 	if mandatory_compounds() and player.compounds_used.size() < 2:
 		warn = "  ⚠ DESCLASSIFICADO: não usou 2 compostos"
 	hud.show_results(rows, "RESULTADO FINAL" + warn)
+	print("[corrida] resultado final: %d carros, vencedor %s, jogador P%d" % [rows.size(), final[0].driver["name"], final.find(player) + 1])
+	var pits := 0
+	var two := 0
+	for c in final:
+		pits += (c as Car).pit_stops
+		if (c as Car).compounds_used.size() >= 2:
+			two += 1
+	print("[corrida] pit stops totais: %d, carros com 2+ compostos: %d/%d" % [pits, two, final.size()])
 	Game.last_results = rows

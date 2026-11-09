@@ -53,10 +53,20 @@ func drive(car: Car, dt: float) -> void:
 		var lim := clampf(ideal / car.max_steer, 0.12, 1.0)
 		steer *= lim
 	if bool(st.get("stability", true)) and car.speed > 8.0 and car.v_long > 0.0:
-		# contra-esterço automático quando a traseira escapa
-		var slide := car.linear_velocity.dot(b.x) / car.speed
-		if absf(slide) > 0.03:
-			steer += (slide - signf(slide) * 0.03) * 1.6
+		# controle de guinada (tipo ESP): compara a rotação real com a esperada pelo volante
+		# e corrige suavemente — amortece o "rabo de peixe" em vez de exagerar
+		var v := car.speed
+		var a_max := 1.5 * (9.81 + 0.003 * v * v) * (1.0 - 0.5 * car.wetness)
+		var r_ref := clampf(-v * steer * car.max_steer / 3.4, -a_max / v, a_max / v)
+		var r := car.angular_velocity.dot(b.y)
+		var err := r - r_ref
+		var slide := car.linear_velocity.dot(b.x) / v
+		var corr := 0.0
+		if absf(err) > 0.12:
+			corr += (err - signf(err) * 0.12) * 0.22
+		if absf(slide) > 0.06:
+			corr += (slide - signf(slide) * 0.06) * 0.6
+		steer += clampf(corr, -0.35, 0.35)
 	# freio automático (segue o perfil da linha ideal) — assistência opcional
 	car.auto_braking = false
 	if bool(st.get("auto_brake", false)) and car.v_long > 5.0:

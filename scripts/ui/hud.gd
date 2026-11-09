@@ -415,6 +415,9 @@ func _update_dash() -> void:
 		_ot_lbl.text = "ULTRAPASSAGEM [F]"
 	elif car.gear < 0:
 		_ot_lbl.text = "RÉ (S acelera, W freia)"
+	elif car.wrong_way:
+		_ot_lbl.text = "CONTRAMÃO — Backspace"
+		_ot_lbl.add_theme_color_override("font_color", Color(1.0, 0.3, 0.25))
 	elif car.auto_braking:
 		_ot_lbl.text = "FREIO AUTOMÁTICO"
 		_ot_lbl.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3))

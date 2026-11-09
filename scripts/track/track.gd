@@ -6,8 +6,8 @@ extends Node3D
 ## (traçado ideal, perfil de velocidade, zonas de asa móvel).
 
 enum Surface { ASPHALT, KERB, GRASS, GRAVEL, WALL }
-const SURFACE_GRIP := [1.0, 0.94, 0.58, 0.5, 0.3]
-const SURFACE_DRAG := [0.0, 0.004, 0.06, 0.32, 0.0]   # resistência extra (fração de Fz)
+const SURFACE_GRIP := [1.0, 0.94, 0.6, 0.58, 0.3]
+const SURFACE_DRAG := [0.0, 0.004, 0.05, 0.16, 0.0]   # resistência extra (fração de Fz)
 
 const DS := 2.0                 # espaçamento das amostras (m)
 const APRON := 1.5              # faixa logo após a linha branca (zebra ou asfalto)

@@ -70,7 +70,15 @@ Para uso pessoal você pode editar `scripts/data/teams.gd`.
 O carro atual é gerado por código (provisório). Para colocar um modelo 3D de verdade, salve um `.glb` (feito no Blender, ou comprado/licenciado)
 em `assets/cars/<sigla>.glb` (ex.: `vtx.glb`) ou `assets/cars/default.glb` — o jogo usa automaticamente. Detalhes em `docs/ROADMAP.md`.
 
-## Teste automático da física
+## Testes automáticos
+
+```
+godot --headless --path . --fixed-fps 120 res://tests/scenarios.tscn      # 14 cenários de estresse
+godot --headless --path . --fixed-fps 120 res://tests/player_test.tscn    # piloto de teclado virtual
+godot --headless --path . --fixed-fps 120 res://tests/gravel_test.tscn    # sair da brita
+```
+
+## Teste automático da física (IA)
 
 ```
 godot --headless --path . --fixed-fps 120 -s res://tests/sim_test.gd -- cars=8 time=200

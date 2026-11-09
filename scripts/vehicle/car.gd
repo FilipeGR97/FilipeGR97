@@ -109,7 +109,9 @@ var v_long := 0.0
 var launch_hold := false
 var reverse_timer := 0.0
 var brake_in := 0.0
+var gear_rpm := 0.0
 var stab_active := false
+var wrong_way := false
 var auto_braking := false
 var power_mult := 1.0
 var aero_mult := 1.0
@@ -371,6 +373,7 @@ func _physics_process(dt: float) -> void:
 	s = track.s_of(global_position, t_idx)
 	lateral = track.lateral_of(global_position, t_idx)
 	surface_off = absf(lateral) - 0.95 > track.half_width
+	wrong_way = (-b.z).dot(track.tang[t_idx]) < -0.3 and not in_pit()
 
 	_ctl_tick += 1
 	if controller and (is_player or _ctl_tick % 2 == 0 or in_pit()):
@@ -395,13 +398,15 @@ func _physics_process(dt: float) -> void:
 	# --- unidade de potência
 	var r_gear: float = RATIOS[gear + 1]
 	var w_rear: float = (wheels[2].omega + wheels[3].omega) * 0.5
-	wheel_rpm = absf(w_rear * r_gear) * 60.0 / TAU
+	# rpm real das rodas (o motor está ligado a elas: patinando, o motor sobe de giro e bate no limitador)
+	var true_rpm := absf(w_rear * r_gear) * 60.0 / TAU
 	var road_rpm := absf(v_long / R_R * r_gear) * 60.0 / TAU
-	if brake_in > 0.05 or wheel_rpm < road_rpm * 0.9:
-		wheel_rpm = maxf(wheel_rpm, road_rpm)
-	elif wheel_rpm > road_rpm * 1.25 and road_rpm > 0.0:
-		# patinando: o câmbio decide pela velocidade real, não pela roda girando em falso
-		wheel_rpm = minf(wheel_rpm, road_rpm * 1.25 + 1500.0)
+	wheel_rpm = true_rpm
+	# rpm usado pelo câmbio automático: segue a velocidade real (não troca marcha com roda patinando)
+	gear_rpm = road_rpm
+	if brake_in > 0.05 or true_rpm < road_rpm * 0.9:
+		# rodas segurando na frenagem: embreagem abre, motor acompanha a velocidade
+		wheel_rpm = maxf(true_rpm, road_rpm)
 	var engaged := gear != 0 and not launch_hold and shift_timer <= 0.0
 	var thr := in_throttle
 	brake_in = in_brake
@@ -419,7 +424,7 @@ func _physics_process(dt: float) -> void:
 	if gear < 0:
 		rear_slip = -minf(wheels[2].sx, wheels[3].sx)
 	var low_grip: bool = wheels[2].surface >= Track.Surface.GRASS or wheels[3].surface >= Track.Surface.GRASS
-	var max_cut := 0.6 if (low_grip or speed < 4.0) else 0.95
+	var max_cut := 0.75 if low_grip else 0.95
 	if rear_slip > tc_target:
 		tc_cut = minf(tc_cut + dt * 9.0 * (rear_slip / tc_target), max_cut)
 	else:
@@ -565,7 +570,7 @@ func _physics_process(dt: float) -> void:
 		# coeficiente de atrito efetivo
 		var mu := MU0 * (1.0 if w.front else REAR_GRIP) * _t_grip * wetf * float(Track.SURFACE_GRIP[w.surface])
 		var dtp := (w.temp - _t_opt) / _t_win
-		mu *= 1.0 - 0.18 * minf(dtp * dtp, 2.2)
+		mu *= 1.0 - (0.18 * minf(dtp * dtp, 1.0) if dtp < 0.0 else 0.12 * minf(dtp * dtp, 1.3))
 		mu *= 1.0 - 0.07 * w.wear - maxf(w.wear - 0.72, 0.0) * 1.15
 		mu *= clampf(1.0 - 0.1 * (w.fz / 3000.0 - 1.0), 0.75, 1.08)
 		var mfz := mu * w.fz
@@ -574,7 +579,7 @@ func _physics_process(dt: float) -> void:
 			# ABS mira o pico de aderência do pneu (escorregamento ~ KX_PEAK)
 			var lim_sx := -KX_PEAK * (1.05 if w.front else 0.95)
 			if w.sx < lim_sx:
-				w.brake_mod = maxf(w.brake_mod - dt * 10.0 * (w.sx / lim_sx), 0.45)
+				w.brake_mod = maxf(w.brake_mod - dt * 10.0 * (w.sx / lim_sx), 0.08)
 			else:
 				w.brake_mod = minf(w.brake_mod + dt * 9.0, 1.0)
 		else:
@@ -611,6 +616,9 @@ func _physics_process(dt: float) -> void:
 				om = maxf(om - tbw / inertia_w * h, 0.0)
 			else:
 				om = minf(om + tbw / inertia_w * h, 0.0)
+			if engaged and not w.front:
+				var om_max := (LIMIT_RPM + 200.0) * TAU / 60.0 / absf(r_gear)
+				om = clampf(om, -om_max, om_max)
 			w.omega = om
 			fx_acc += fx
 			fy_acc += fy
@@ -629,11 +637,13 @@ func _physics_process(dt: float) -> void:
 		apply_force(upv * w.fz + wfw * fxw + wsd * fyw, w.hit_pos - xf.origin)
 		# temperatura e desgaste
 		w.slip_power = absf(fxw * (w.omega * w.radius - vx)) + absf(fyw * vy)
-		var heat := 0.00012 * w.slip_power * _t_heat + 0.000008 * absf(vx) * w.fz
+		var paved := w.surface <= Track.Surface.KERB
+		var slip_heat := minf(w.slip_power, 30000.0) * (1.0 if paved else 0.08)
+		var heat := 0.00012 * slip_heat * _t_heat + 0.000008 * absf(vx) * w.fz
 		var cool := (w.temp - amb) * (0.012 + 0.0009 * absf(vx)) * (1.0 + 2.5 * wetness)
-		w.temp = clampf(w.temp + (heat - cool) * dt, amb - 5.0, 170.0)
+		w.temp = clampf(w.temp + (heat - cool) * dt, amb - 5.0, 140.0)
 		var overheat := 1.0 + maxf(w.temp - _t_opt - _t_win, 0.0) / 20.0
-		w.wear = minf(w.wear + dt * absf(vx) / 1000.0 * _t_wear * wear_mult * dry_pen * overheat * (0.35 + 0.65 * clampf(w.slip_power / 9000.0, 0.0, 4.0)), 1.0)
+		w.wear = minf(w.wear + dt * absf(vx) / 1000.0 * _t_wear * wear_mult * dry_pen * overheat * (0.35 + 0.65 * clampf(w.slip_power / 9000.0, 0.0, 4.0)) * (1.0 if paved else 0.15), 1.0)
 
 	for wi in 4:
 		var w: Wheel = wheels[wi]
@@ -732,15 +742,15 @@ func _auto_gearbox(dt: float) -> void:
 	_auto_cool = maxf(_auto_cool - dt, 0.0)
 	if shift_timer > 0.0 or _auto_cool > 0.0:
 		return
-	if wheel_rpm > 11850.0 and gear < 8:
+	if gear_rpm > 11850.0 and gear < 8:
 		_auto_cool = 0.25
 		shift_up()
 	elif gear > 1:
 		var r_now: float = RATIOS[gear + 1]
 		var r_low: float = RATIOS[gear]
-		var after := wheel_rpm * r_low / r_now
+		var after := gear_rpm * r_low / r_now
 		var thresh := 9300.0 if in_brake > 0.2 else 7000.0
-		if wheel_rpm < thresh and after < 11400.0:
+		if gear_rpm < thresh and after < 11400.0:
 			shift_down()
 			_auto_cool = 0.2
 

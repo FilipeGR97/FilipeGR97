@@ -373,6 +373,7 @@ func _show_options() -> void:
 		Game.apply_audio())
 	_slider("Volume do motor", 0, 150, 1, float(st["engine_volume"]) * 100.0, func(x): st["engine_volume"] = x / 100.0)
 	_panel.add_child(UIKit.label("ASSISTÊNCIAS", 16, UIKit.ACCENT, true))
+	_panel.add_child(UIKit.label("No teclado, desligar tudo deixa o carro como um F1 real: muito difícil.", 14, UIKit.MUTED))
 	_check("ABS (freio antitravamento)", bool(st["abs"]), func(v): st["abs"] = v)
 	_option("Controle de tração", ["Desligado", "Médio", "Total"], int(st["traction_control"]), func(i): st["traction_control"] = i)
 	_check("Câmbio automático", bool(st["auto_gearbox"]), func(v): st["auto_gearbox"] = v)

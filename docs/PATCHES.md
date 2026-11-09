@@ -4,6 +4,29 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 1.2 — v0.1.2 (correções: brita, rodas disparando, chuva)
+
+| Problema relatado / encontrado | Causa | Correção |
+|---|---|---|
+| Preso na brita a 2 km/h; ré dava um tranco e parava | Bug do 1.1: o motor deixou de "ver" a roda patinando, o limitador nunca cortava e as rodas disparavam | Motor volta a seguir a roda real (limitador funciona); câmbio usa a velocidade real; brita/grama seguram menos o carro |
+| Depois de sair da brita o carro rodava sem parar (IA também) | Roda disparada superaquecia os pneus a 170 °C → sem aderência | Patinar na terra não esquenta o pneu; temperatura máx. 140 °C; superaquecimento tira no máx. ~15% de aderência |
+| (encontrado nos testes) Rodava na chuva com slicks | ABS do 1.1 não soltava o freio abaixo de 45% e travava a traseira no molhado | ABS pode aliviar até ~8% |
+| (encontrado nos testes) "Rabo de peixe" ao corrigir | Contra-esterço automático exagerado | Controle de estabilidade por guinada (tipo ESP), suave |
+| (encontrado nos testes) Controle de tração fraco parado | Limite de 60% abaixo de 4 km/h | Só limita fora do asfalto |
+| Carro de costas sem aviso | — | Aviso "CONTRAMÃO — Backspace" no HUD |
+
+### Bateria de testes automáticos (`tests/scenarios.tscn`) — 14/14 OK
+Batida frontal no muro a 200 km/h · raspão a 250 · brita a 150 · grama a 200 · parado de costas · parado de lado ·
+queda de 3 m · capotado · zebras em alta · chuva forte com slick · sem assistências · câmbio manual + ré ·
+batida traseira da IA · pit stop do jogador.
+Mais: corrida completa de 2 voltas com 20 carros (seco e chuva) até o resultado, e corrida de 6 voltas com
+estratégia (10 pit stops, todos cumprindo a regra dos 2 compostos). Nenhum erro de script.
+
+Observação: sem nenhuma assistência, no teclado o carro roda bastante — é o comportamento de um F1 real
+(os jogos oficiais também). Com controle ou volante fica controlável.
+
+---
+
 ## Patch 1.1 — v0.1.1 (correções do Patch 1: pilotabilidade)
 
 Correções do seu teste do Patch 1:
