@@ -6,3 +6,9 @@ export_presets.cfg
 *.tmp
 .DS_Store
 Thumbs.db
+
+# executável da Godot (não versionar)
+Godot_v*/
+Godot_v*.exe
+*.exe
+*.zip

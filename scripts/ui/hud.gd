@@ -320,7 +320,7 @@ func _build_pause() -> void:
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.pressed.connect(_on_pause_action.bind(item[1]))
 		vb.add_child(b)
-	vb.add_child(UIKit.label("Controles: W/S acelera/freia · A/D direção · E/Q marchas (manual)\nEspaço asa móvel · F ultrapassagem · R modo ERS · P box · Tab estratégia\n[ ] balanço de freio · C câmera · V olhar para trás · Backspace voltar à pista", 14, UIKit.MUTED))
+	vb.add_child(UIKit.label("Controles: W/S acelera/freia · A/D direção · E/Q marchas (manual)\nEspaço asa móvel · F ultrapassagem · R modo ERS · P box · Tab estratégia\n[ ] balanço de freio · C câmera · V olhar para trás · Backspace voltar à pista · parado, segure S para dar ré", 14, UIKit.MUTED))
 	_pause.add_child(pnl)
 	pnl.anchor_left = 0.5
 	pnl.anchor_right = 0.5
@@ -408,10 +408,19 @@ func _update_dash() -> void:
 	else:
 		_aero_lbl.text = "ASA: MODO CURVA"
 		_aero_lbl.add_theme_color_override("font_color", UIKit.MUTED)
+	_ot_lbl.add_theme_color_override("font_color", UIKit.YELLOW)
 	if car.overtake_active:
 		_ot_lbl.text = "ULTRAPASSAGEM ATIVA"
 	elif car.overtake_ready:
 		_ot_lbl.text = "ULTRAPASSAGEM [F]"
+	elif car.gear < 0:
+		_ot_lbl.text = "RÉ (S acelera, W freia)"
+	elif car.auto_braking:
+		_ot_lbl.text = "FREIO AUTOMÁTICO"
+		_ot_lbl.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3))
+	elif car.stab_active:
+		_ot_lbl.text = "ESTABILIDADE"
+		_ot_lbl.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2))
 	else:
 		_ot_lbl.text = ""
 	var per_lap: float = race.fuel_per_lap()

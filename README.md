@@ -16,6 +16,7 @@ Requisitos: placa de vídeo com Vulkan (GTX 900 ou mais nova). Testado numa GTX 
 | Ação | Teclado | Controle (Xbox) |
 |---|---|---|
 | Acelerar / Frear | W / S (ou ↑ ↓) | Gatilho direito / esquerdo |
+| Ré | Parado, segure S | Parado, segure o gatilho esquerdo |
 | Direção | A / D (ou ← →) | Analógico esquerdo |
 | Subir / descer marcha (câmbio manual) | E / Q | A / X ou RB / LB |
 | Asa móvel (modo reta) | Espaço | B |

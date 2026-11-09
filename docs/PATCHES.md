@@ -4,6 +4,29 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 1.1 — v0.1.1 (correções do Patch 1: pilotabilidade)
+
+Correções do seu teste do Patch 1:
+
+| Problema relatado | Causa encontrada | Correção |
+|---|---|---|
+| Carro derrapa demais, impossível ficar 5 s na pista | No teclado o acelerador ia a 100% quase instantaneamente e o controle de tração só olhava a patinagem para frente, não a traseira escorregando de lado | Acelerador progressivo no teclado; **controle de estabilidade** (corta potência quando a traseira escapa) + contra-esterço automático; direção assistida limita o esterço ao que os pneus aguentam em cada velocidade |
+| Ré não funciona | A ré engatava, mas o S continuava sendo freio | Parado, **segure S** → engata a ré e o S acelera para trás (até 25 km/h); W freia/volta para a 1ª |
+| Ficar preso na brita/grama | Controle de tração cortava 95% e o câmbio subia marchas com a roda patinando | Fora do asfalto o corte é limitado; câmbio decide pela velocidade real |
+| Freio "não acompanha" | ABS soltava o freio muito antes do limite do pneu | ABS agora trabalha no pico de aderência (290→0 km/h em ~3 s) |
+| Som de "carro parado" ao frear | RPM caía para marcha lenta quando as rodas seguravam | RPM acompanha a velocidade nas frenagens (reduções audíveis); som do motor ao aliviar mais presente |
+| Guia verde/vermelho | Era só visual | Nova assistência **Freio automático (segue a linha)** em Opções |
+
+Validado com um piloto de teclado virtual (`tests/player_test.tscn`): volta inteira sem rodar (deriva máx. ~8°, antes 39°), ré funcionando, freio automático contornando a pista só com o acelerador.
+
+### O que testar
+- Pilotar no teclado com as assistências padrão (estabilidade e direção assistida ligadas).
+- Bater/sair da pista e sair de ré com S.
+- Ligar "Freio automático" em Opções e dar uma volta só acelerando e esterçando.
+- Desligar estabilidade/ABS/tração para sentir o carro "cru" (mais difícil, como na vida real).
+
+---
+
 ## Patch 1 — v0.1.0 (base jogável)
 
 ### O que testar

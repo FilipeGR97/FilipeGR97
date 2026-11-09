@@ -32,7 +32,9 @@ var settings := {
 	"abs": true,
 	"traction_control": 1,     # 0 off, 1 médio, 2 total
 	"auto_gearbox": true,
-	"steering_assist": true,   # sensibilidade por velocidade (teclado)
+	"steering_assist": true,   # limita o esterço ao que os pneus aguentam
+	"stability": true,         # controle de estabilidade + contra-esterço
+	"auto_brake": false,       # freio automático seguindo a linha ideal
 	"pit_limiter_auto": true,
 	"auto_aero": false,        # abre a asa móvel automaticamente
 	"camera": 0,

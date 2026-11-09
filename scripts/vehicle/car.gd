@@ -108,6 +108,9 @@ var wheel_rpm := 0.0
 var v_long := 0.0
 var launch_hold := false
 var reverse_timer := 0.0
+var brake_in := 0.0
+var stab_active := false
+var auto_braking := false
 var power_mult := 1.0
 var aero_mult := 1.0
 
@@ -393,20 +396,48 @@ func _physics_process(dt: float) -> void:
 	var r_gear: float = RATIOS[gear + 1]
 	var w_rear: float = (wheels[2].omega + wheels[3].omega) * 0.5
 	wheel_rpm = absf(w_rear * r_gear) * 60.0 / TAU
+	var road_rpm := absf(v_long / R_R * r_gear) * 60.0 / TAU
+	if brake_in > 0.05 or wheel_rpm < road_rpm * 0.9:
+		wheel_rpm = maxf(wheel_rpm, road_rpm)
+	elif wheel_rpm > road_rpm * 1.25 and road_rpm > 0.0:
+		# patinando: o câmbio decide pela velocidade real, não pela roda girando em falso
+		wheel_rpm = minf(wheel_rpm, road_rpm * 1.25 + 1500.0)
 	var engaged := gear != 0 and not launch_hold and shift_timer <= 0.0
 	var thr := in_throttle
+	brake_in = in_brake
+	if gear == -1 and bool(assists["auto_gear"]):
+		thr = in_brake
+		brake_in = in_throttle
+	if gear == -1 and speed > 7.0:
+		thr = 0.0
 	if in_limiter and speed > track.pit_speed - 0.3:
 		thr = minf(thr, clampf((track.pit_speed - speed) * 0.5, 0.0, 1.0))
 	# controle de tração
-	var tc_target: float = TC_TARGETS[clampi(int(assists["tc"]), 0, 2)]
+	var tc_level := clampi(int(assists["tc"]), 0, 2)
+	var tc_target: float = TC_TARGETS[tc_level]
 	var rear_slip := maxf(wheels[2].sx, wheels[3].sx)
 	if gear < 0:
 		rear_slip = -minf(wheels[2].sx, wheels[3].sx)
+	var low_grip: bool = wheels[2].surface >= Track.Surface.GRASS or wheels[3].surface >= Track.Surface.GRASS
+	var max_cut := 0.6 if (low_grip or speed < 4.0) else 0.95
 	if rear_slip > tc_target:
-		tc_cut = minf(tc_cut + dt * 9.0 * (rear_slip / tc_target), 0.95)
+		tc_cut = minf(tc_cut + dt * 9.0 * (rear_slip / tc_target), max_cut)
 	else:
 		tc_cut = maxf(tc_cut - dt * 5.0, 0.0)
-	throttle_eff = thr * (1.0 - tc_cut)
+	# controle de estabilidade: corta potência se a traseira começa a escorregar de lado (sobreesterço)
+	var stab_cut := 0.0
+	if bool(assists.get("stab", false)) and speed > 6.0 and gear > 0:
+		var util := 0.0
+		for wi in [2, 3]:
+			var rw: Wheel = wheels[wi]
+			var ux := rw.sx / KX_PEAK
+			var uy := rw.sy / AY_PEAK
+			util = maxf(util, sqrt(ux * ux + uy * uy))
+		var body_slip := absf(linear_velocity.dot(rgt)) / maxf(speed, 1.0)
+		stab_cut = clampf((util - 0.8) * 1.8, 0.0, 0.9)
+		stab_cut = maxf(stab_cut, clampf((body_slip - 0.05) * 9.0, 0.0, 0.9))
+	stab_active = stab_cut > 0.05
+	throttle_eff = thr * (1.0 - tc_cut) * (1.0 - stab_cut)
 	var clutch_rpm := IDLE_RPM + thr * 4800.0
 	var free_rpm := IDLE_RPM + thr * (LIMIT_RPM - IDLE_RPM)
 	if not engaged:
@@ -505,7 +536,7 @@ func _physics_process(dt: float) -> void:
 	var dry_pen := 1.0
 	if not _t_slick and wetness < 0.25:
 		dry_pen = 3.5 if compound == "wet" else 2.6
-	var brake_total := in_brake * BRAKE_TORQUE_TOTAL
+	var brake_total := brake_in * BRAKE_TORQUE_TOTAL
 	if launch_hold:
 		brake_total = BRAKE_TORQUE_TOTAL
 	var abs_on: bool = assists["abs"]
@@ -540,10 +571,12 @@ func _physics_process(dt: float) -> void:
 		var mfz := mu * w.fz
 		# ABS
 		if abs_on and tb > 0.0:
-			if w.sx < -KX_PEAK * (0.85 if w.front else 0.7):
-				w.brake_mod = maxf(w.brake_mod - dt * 14.0, 0.25)
+			# ABS mira o pico de aderência do pneu (escorregamento ~ KX_PEAK)
+			var lim_sx := -KX_PEAK * (1.05 if w.front else 0.95)
+			if w.sx < lim_sx:
+				w.brake_mod = maxf(w.brake_mod - dt * 10.0 * (w.sx / lim_sx), 0.45)
 			else:
-				w.brake_mod = minf(w.brake_mod + dt * 6.0, 1.0)
+				w.brake_mod = minf(w.brake_mod + dt * 9.0, 1.0)
 		else:
 			w.brake_mod = 1.0
 		var tbw := tb * w.brake_mod
@@ -660,8 +693,8 @@ func _ers(dt: float) -> float:
 			soc -= used
 	var harvest := 0.0
 	if speed > 12.0:
-		if in_brake > 0.05:
-			harvest = MGUK_KW * 1000.0 * minf(in_brake * 1.4, 1.0)
+		if brake_in > 0.05:
+			harvest = MGUK_KW * 1000.0 * minf(brake_in * 1.4, 1.0)
 		elif throttle_eff < 0.05:
 			harvest = 120000.0
 		elif ers_mode == 0 and vk > 200.0:
@@ -685,15 +718,15 @@ func _auto_gearbox(dt: float) -> void:
 	if not bool(assists["auto_gear"]):
 		return
 	# ré automática: parado e segurando o freio
-	if gear >= 1 and speed < 0.6 and in_brake > 0.5 and in_throttle < 0.05:
+	if gear >= 1 and speed < 1.0 and in_brake > 0.5 and in_throttle < 0.05:
 		reverse_timer += dt
-		if reverse_timer > 0.7:
+		if reverse_timer > 0.35:
 			gear = -1
 			reverse_timer = 0.0
 		return
 	reverse_timer = 0.0
 	if gear <= 0:
-		if in_throttle > 0.1 or (gear == -1 and in_brake < 0.05 and speed < 0.5 and in_throttle > 0.05):
+		if in_throttle > 0.1 and (gear == 0 or v_long > -1.0):
 			gear = 1
 		return
 	_auto_cool = maxf(_auto_cool - dt, 0.0)

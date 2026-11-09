@@ -75,8 +75,9 @@ func _process(dt: float) -> void:
 	var ld := clampf(thr * 1.15, 0.0, 1.0)
 	var base := linear_to_db(maxf(ev, 0.001))
 	var dip := -9.0 * _shift_dip
-	_apply(_on, pitch, base + lerpf(-22.0, 0.0, ld) + dip + (rpm / 12500.0) * 3.0)
-	_apply(_off, pitch, base + lerpf(-5.0, -30.0, ld) + dip)
+	var rpm_k := clampf((rpm - 4000.0) / 8500.0, 0.0, 1.0)
+	_apply(_on, pitch, base + lerpf(-11.0, 0.0, ld) + dip + rpm_k * 3.0)
+	_apply(_off, pitch, base + lerpf(-2.0 + rpm_k * 2.0, -24.0, ld) + dip)
 	# turbo + MGU-K (assobio elétrico)
 	var whine_pitch := clampf(0.4 + rpm / 12500.0 * 0.9 + car.ers_deploy_kw / 350.0 * 0.15, 0.3, 1.6)
 	_apply(_whine, whine_pitch, base - 24.0 + car.ers_deploy_kw / 350.0 * 8.0 + ld * 4.0)
