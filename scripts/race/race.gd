@@ -403,6 +403,8 @@ func _physics_process(dt: float) -> void:
 				hud.set_lights(n, true)
 	if state == "intro" or state == "lights":
 		return
+	if OS.get_cmdline_user_args().has("launchlog") and session_time - race_start < 6.0 and int(session_time * 120) % 12 == 0:
+		print("[largada] t=%.2f rpm=%5.0f marcha=%d thr_in=%.2f thr=%.2f tc=%.2f v=%.0f sx=%.2f shift=%.3f hold=%s" % [session_time - race_start, player.rpm, player.gear, player.in_throttle, player.throttle_eff, player.tc_cut, player.kmh(), player.wheels[2].sx, player.shift_timer, player.launch_hold])
 	for c in cars:
 		_update_timing(c, dt)
 	_slip_t -= dt

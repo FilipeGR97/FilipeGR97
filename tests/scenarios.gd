@@ -172,7 +172,11 @@ func _physics_process(dt: float) -> void:
 	var wheel_v := 0.0
 	for k in [2, 3]:
 		wheel_v = maxf(wheel_v, absf((car.wheels[k] as Car.Wheel).omega) * 0.365)
-	if wheel_v > car.speed * 1.6 + 25.0 and car.wheels[2].grounded:
+	var r_g: float = absf(Car.RATIOS[car.gear + 1]) if car.gear != 0 else 1.0
+	var v_limit := (Car.LIMIT_RPM + 400.0) * TAU / 60.0 / r_g * 0.365
+	if car.gear != 0 and t > 1.5 and car.shift_timer <= 0.0 and wheel_v > v_limit * 1.08:
+		_fail("roda acima do limitador (%.0f > %.0f km/h)" % [wheel_v * 3.6, v_limit * 3.6])
+	if wheel_v > car.speed * 1.6 + 25.0 and car.wheels[2].grounded and int(Game.settings["traction_control"]) > 0:
 		runaway_t += dt
 		if runaway_t > 3.0:
 			_fail("roda disparada (roda %.0f km/h, carro %.0f km/h)" % [wheel_v * 3.6, car.kmh()])
@@ -194,12 +198,14 @@ func _physics_process(dt: float) -> void:
 		print("  t=%.1f v=%.0f vl=%.1f g=%d thr_in=%.2f brk_in=%.2f thr=%.2f tc=%.2f stab=%s aero=%s om=%.1f sx=%.2f sy=%.2f fz=%.0f sup=%d lat=%.1f yaw=%.2f" % [t, car.kmh(), car.v_long, car.gear, car.in_throttle, car.in_brake, car.throttle_eff, car.tc_cut, car.stab_active, car.aero_open, w2.omega, w2.sx, w2.sy, w2.fz, w2.surface, car.lateral, car.angular_velocity.y])
 	var on_track := absf(car.lateral) < track.half_width + 0.5
 	var fwd_ok := (-car.global_transform.basis.z).dot(track.tang[car.t_idx]) > 0.7
-	if recovered_at < 0.0 and on_track and fwd_ok and car.v_long > 15.0 and car.global_transform.basis.y.y > 0.8:
+	if recovered_at < 0.0 and t > 2.5 and on_track and fwd_ok and car.v_long > 15.0 and car.global_transform.basis.y.y > 0.8:
 		recovered_at = t
-	if recovered_at >= 0.0 and car.speed > 12.0 and t > maxf(recovered_at, 0.0) + 4.0:
+	if recovered_at >= 0.0 and car.speed > 12.0 and car.gear >= 1 and car.v_long > 0.0 and t > maxf(recovered_at, 0.0) + 4.0:
 		var slip := absf(rad_to_deg(atan2(car.linear_velocity.dot(car.global_transform.basis.x), car.v_long)))
 		if slip > 30.0:
 			spins += 1
+			if "trace" in OS.get_cmdline_user_args() and spins % 8 == 1:
+				print("  SPIN t=%.2f v=%.0f slip=%.0f° g=%d thr=%.2f brk=%.2f steer=%.2f sup=%d lat=%.1f yaw=%.2f syR=%.2f syF=%.2f" % [t, car.kmh(), slip, car.gear, car.throttle_eff, car.brake_in, car.in_steer, car.wheels[2].surface, car.lateral, car.angular_velocity.y, car.wheels[2].sy, car.wheels[0].sy])
 	if t >= dur:
 		_finish()
 

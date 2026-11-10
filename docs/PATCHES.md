@@ -4,6 +4,31 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 1.4 — v0.1.4 (sons reais dos motores)
+
+- **Motores com som gravado** a partir dos arquivos em `Sonsmotor/` (usados os `*_trocas_refinadas.mp3`, que seguram
+  o giro constante — ideais para loop). Para cada motor: 2 loops "acelerando" + 2–4 loops "aliviando" (desaceleração real
+  gravada), mapeados por rpm; o jogo mistura os dois mais próximos do giro e ajusta a afinação.
+  V10 = Valkyr · V6 turbo híbrido = Orion · V8 = Kestrel · V12 = Helix.
+- **Troca de marcha com som real** recortado das gravações do V8.
+- Para trocar/adicionar sons: coloque novos mp3 em `Sonsmotor/` e rode `tools/build_engine_samples.py`
+  (ajustando as janelas no topo do arquivo).
+- Prévias do som gravado de dentro do jogo: `Sonsmotor/previa_no_jogo/`.
+
+Bugs encontrados no caminho:
+| Problema | Causa | Correção |
+|---|---|---|
+| Largada lenta e motor "picotando" (ouvido nas gravações) | Controle de tração liga/desliga, ~15 cortes por segundo | Controle proporcional suave |
+| IA deixava o giro cair na largada | Soltava o acelerador no tempo de reação | Mantém o motor cheio até largar |
+| Batia no limitador em 1ª na largada | Câmbio esperava a velocidade real | Sobe a marcha perto do corte (só se a roda não estiver patinando) |
+| Carro rodava na grama depois de batidas | Limite de 75% no controle de tração fora do asfalto | Corte total liberado (o "preso na brita" real já tinha sido resolvido) |
+
+Testes: 14/14 cenários (padrão e com suas opções), agora também verificando "roda nunca acima do limitador";
+piloto de teclado, brita, corrida completa de 20 carros; áudio do jogo gravado e analisado por espectrograma
+(tom acompanha o giro, cai nas trocas de marcha, alívio audível).
+
+---
+
 ## Patch 1.3 — v0.1.3 (correções finais antes do Patch 2)
 
 | Problema relatado / encontrado | Causa | Correção |

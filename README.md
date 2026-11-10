@@ -44,7 +44,7 @@ Câmeras: atrás do piloto (padrão), olhos do piloto, T-Cam, bico, perseguiçã
   bandeira quadriculada e tabela de resultado.
 - **IA**: 19 adversários com traçado ideal calculado, perfil de velocidade, ultrapassagem, estratégia de pit e erros ocasionais.
 - **Câmeras**: atrás do piloto (padrão, halo visto por trás), olhos do piloto, T-Cam, bico, perseguição perto/longe, TV.
-- **Som por motor**: V10, V6 turbo híbrido, V8 e V12 (um por fornecedor) com afinação por equipe, assobio do turbo/MGU-K, pneus, vento e zebras.
+- **Som por motor gravado**: V10, V6 turbo híbrido, V8 e V12 (loops reais por faixa de giro, acelerando/aliviando, troca de marcha real), afinação por equipe, assobio do turbo/MGU-K, pneus, vento e zebras. Gerados por `tools/build_engine_samples.py`.
 - Modos: **Corrida rápida**, **Contra o relógio**, **Treino livre**. Menu com showroom 3D e opções (gráficos, áudio, assistências).
 
 ## Estrutura

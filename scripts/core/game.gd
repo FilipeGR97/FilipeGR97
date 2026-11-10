@@ -70,6 +70,9 @@ func _ready() -> void:
 			session["mode"] = int(a.substr(5))
 		elif a.begins_with("laps="):
 			session["laps"] = int(a.substr(5))
+		elif a.begins_with("team="):
+			session["team"] = int(a.substr(5))
+			session["driver"] = 0
 		elif a.begins_with("ai="):
 			session["ai_count"] = int(a.substr(3))
 		elif a == "autodrive":

@@ -431,11 +431,10 @@ func _physics_process(dt: float) -> void:
 	if gear < 0:
 		rear_slip = -minf(wheels[2].sx, wheels[3].sx)
 	var low_grip: bool = wheels[2].surface >= Track.Surface.GRASS or wheels[3].surface >= Track.Surface.GRASS
-	var max_cut := 0.75 if low_grip else 0.95
-	if rear_slip > tc_target:
-		tc_cut = minf(tc_cut + dt * 9.0 * (rear_slip / tc_target), max_cut)
-	else:
-		tc_cut = maxf(tc_cut - dt * 5.0, 0.0)
+	var max_cut := 0.95
+	# controle de tração proporcional e suave (antes era liga/desliga e "picotava" o motor)
+	var tc_want := clampf((rear_slip - tc_target) / maxf(tc_target, 0.05) * 0.85, 0.0, max_cut)
+	tc_cut = move_toward(tc_cut, tc_want, dt * (6.0 if tc_want > tc_cut else 3.0))
 	# controle de estabilidade: corta potência se a traseira começa a escorregar de lado (sobreesterço)
 	var stab_cut := 0.0
 	if bool(assists.get("stab", false)) and speed > 6.0 and gear > 0:
@@ -749,7 +748,7 @@ func _auto_gearbox(dt: float) -> void:
 	_auto_cool = maxf(_auto_cool - dt, 0.0)
 	if shift_timer > 0.0 or _auto_cool > 0.0:
 		return
-	if gear_rpm > 11850.0 and gear < 8:
+	if (gear_rpm > 11850.0 or (rpm > 12350.0 and gear_rpm > 10800.0)) and gear < 8:
 		_auto_cool = 0.25
 		shift_up()
 	elif gear > 1:

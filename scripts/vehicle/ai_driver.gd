@@ -38,15 +38,20 @@ func drive(car: Car, dt: float) -> void:
 	var tr := car.track
 	var spd := car.speed
 	# ------------------------------------------------ largada
-	if car.launch_hold:
+	var rt: float = race.race_time() if race and race.has_method("race_time") else 99.0
+	if car.launch_hold and rt < 0.0:
+		# semáforo aceso: motor cheio, carro seguro
 		car.in_throttle = 0.72
 		car.in_brake = 0.0
 		car.in_steer = 0.0
 		return
-	if _launch_delay > 0.0 and race and race.has_method("race_time") and race.race_time() < _launch_delay:
-		car.in_throttle = 0.0
-		car.in_brake = 1.0
+	if _launch_delay > 0.0 and rt >= 0.0 and rt < _launch_delay:
+		# tempo de reação: segura o carro com o motor cheio (não deixa o giro cair)
+		car.launch_hold = true
+		car.in_throttle = 0.72
+		car.in_brake = 0.0
 		return
+	car.launch_hold = false
 	# ------------------------------------------------ desvio de tráfego
 	# decisões de tráfego a ~20 Hz (economiza CPU com 20 carros)
 	_think -= dt

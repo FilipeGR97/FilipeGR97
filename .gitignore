@@ -12,3 +12,6 @@ Godot_v*/
 Godot_v*.exe
 *.exe
 *.zip
+
+# gravações-fonte do usuário (os loops gerados ficam em assets/audio)
+Sonsmotor/
