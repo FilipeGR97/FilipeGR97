@@ -76,7 +76,28 @@ func _ready() -> void:
 			dev_autodrive = true
 
 
+func _key_event(code: Key, down: bool) -> void:
+	var e := InputEventKey.new()
+	e.physical_keycode = code
+	e.keycode = code
+	e.pressed = down
+	Input.parse_input_event(e)
+
+
 func _process(_dt: float) -> void:
+	if OS.get_cmdline_user_args().has("camtest"):
+		# ferramenta de teste: aperta C e depois 6 durante a corrida e mostra a câmera
+		_frame += 1
+		var rc := get_tree().current_scene
+		if _frame == 400 or _frame == 420:
+			_key_event(KEY_C, _frame == 400)
+		if _frame == 500 or _frame == 520:
+			_key_event(KEY_6, _frame == 500)
+		if (_frame == 450 or _frame == 560) and rc and rc.get("camera"):
+			print("[camtest] câmera = %s" % CameraRig.NAMES[rc.camera.view])
+		if _frame == 600:
+			get_tree().quit()
+		return
 	if _shots.is_empty():
 		return
 	_frame += 1

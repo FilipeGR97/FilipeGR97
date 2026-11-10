@@ -35,6 +35,11 @@ func _initialize() -> void:
 		root.add_child(c)
 		c.setup(k % Teams.count(), Teams.team(k % Teams.count())["drivers"][0], track, false)
 		c.set_fuel(15.0)
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("wet="):
+				c.wetness = float(a.substr(4))
+				c.track_temp = 25.0
+				c.set_compound(Tyres.best_for(c.wetness), true)
 		var ai := AIDriver.new(0.97)
 		ai.race = self
 		ai.cars = cars
@@ -56,8 +61,21 @@ var trace := false
 var tr0 := 400.0
 var tr1 := 760.0
 var pit_done := false
+var off_t := {}
+var reported := {}
 func _physics_process(dt: float) -> bool:
 	t += dt
+	for cc in cars:
+		var q: Car = cc
+		if absf(q.lateral) > track.half_width + 2.0 or q.speed < 3.0:
+			off_t[q] = off_t.get(q, 0.0) + dt
+		else:
+			off_t[q] = 0.0
+		if off_t[q] > 12.0 and not reported.has(q):
+			reported[q] = true
+			print("!!! carro %d PRESO fora/parado há 12 s: s=%.0f lat=%.1f v=%.0f marcha=%d pneu=%s desg=%.0f%% T=%.0f" % [cars.find(q), q.s, q.lateral, q.kmh(), q.gear, q.compound, q.max_wear()*100, q.wheels[2].temp])
+		elif off_t[q] < 1.0:
+			reported.erase(q)
 	if "pit" in OS.get_cmdline_user_args():
 		var pc: Car = cars[0]
 		if t > 3.0 and pc.pit_state == Car.Pit.NONE and not pit_done:

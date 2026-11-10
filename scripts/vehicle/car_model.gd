@@ -953,7 +953,7 @@ func set_wheel(i: int, comp: float, spin: float, steer: float) -> void:
 
 func set_steering(v: float) -> void:
 	if _steer_node:
-		_steer_node.rotation.z = v * 1.4
+		_steer_node.rotation.z = -v * 1.4
 
 
 func set_aero(open: bool) -> void:

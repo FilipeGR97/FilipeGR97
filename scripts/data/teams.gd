@@ -5,11 +5,22 @@ class_name Teams
 ## power / aero: multiplicadores de desempenho do carro (1.0 = referência)
 ## engine: chave do fornecedor de unidade de potência (define o som — ver ENGINES)
 
+## Som: "orders" = harmônicos em múltiplos de rpm/120 (meia ordem do virabrequim); a combustão de um motor
+## de N cilindros fica na ordem N. "harm" = amplitude de cada ordem. "uneven" = irregularidade de queima (V8).
+## A arquitetura é só sonora (fictícia) — a potência segue o regulamento do jogo.
 const ENGINES := {
-	"valkyr": {"name": "Valkyr", "power": 1.000, "sound": {"harm": [0.30, 0.55, 0.20, 1.00, 0.35, 0.60, 0.15, 0.28], "drive": 2.4, "noise": 0.22, "rasp": 0.35, "whine": 0.18}},
-	"orion": {"name": "Orion", "power": 0.995, "sound": {"harm": [0.45, 0.35, 0.30, 1.00, 0.55, 0.30, 0.25, 0.15], "drive": 1.8, "noise": 0.16, "rasp": 0.20, "whine": 0.26}},
-	"kestrel": {"name": "Kestrel", "power": 0.990, "sound": {"harm": [0.20, 0.70, 0.15, 0.90, 0.25, 0.80, 0.10, 0.45], "drive": 3.0, "noise": 0.30, "rasp": 0.50, "whine": 0.12}},
-	"helix": {"name": "Helix", "power": 0.985, "sound": {"harm": [0.55, 0.25, 0.40, 1.00, 0.20, 0.45, 0.35, 0.20], "drive": 2.1, "noise": 0.20, "rasp": 0.28, "whine": 0.32}},
+	"valkyr": {"name": "Valkyr", "type": "V10 aspirado", "power": 1.000, "sound": {"cyl": 10,
+		"orders": [2.0, 5.0, 10.0, 15.0, 20.0, 30.0], "harm": [0.15, 0.30, 1.00, 0.25, 0.60, 0.35],
+		"drive": 2.6, "noise": 0.16, "rasp": 0.55, "whine": 0.0, "uneven": 0.0}},
+	"orion": {"name": "Orion", "type": "V6 turbo híbrido", "power": 0.995, "sound": {"cyl": 6,
+		"orders": [1.0, 2.0, 3.0, 6.0, 9.0, 12.0, 18.0], "harm": [0.30, 0.35, 0.30, 1.00, 0.30, 0.50, 0.20],
+		"drive": 1.8, "noise": 0.14, "rasp": 0.20, "whine": 0.35, "uneven": 0.0}},
+	"kestrel": {"name": "Kestrel", "type": "V8", "power": 0.990, "sound": {"cyl": 8,
+		"orders": [1.0, 2.0, 3.0, 4.0, 8.0, 12.0, 16.0], "harm": [0.45, 0.70, 0.30, 0.60, 1.00, 0.30, 0.40],
+		"drive": 3.0, "noise": 0.30, "rasp": 0.30, "whine": 0.0, "uneven": 0.35}},
+	"helix": {"name": "Helix", "type": "V12", "power": 0.985, "sound": {"cyl": 12,
+		"orders": [2.0, 6.0, 12.0, 18.0, 24.0, 36.0], "harm": [0.10, 0.25, 1.00, 0.30, 0.60, 0.30],
+		"drive": 2.2, "noise": 0.12, "rasp": 0.50, "whine": 0.0, "uneven": 0.0}},
 }
 
 const TEAMS := [

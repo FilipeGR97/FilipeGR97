@@ -16,9 +16,9 @@ const DATA := {
 	"hard": {"name": "Duro", "code": "H", "label": "C2", "color": Color(0.95, 0.95, 0.95), "grip": 0.957, "wear_km": 1.0 / 140.0,
 		"t_opt": 100.0, "t_win": 30.0, "heat": 0.9, "start_t": 70.0, "wet_curve": [1.0, 0.78, 0.55, 0.42], "slick": true},
 	"inter": {"name": "Intermediário", "code": "I", "label": "INT", "color": Color(0.15, 0.8, 0.25), "grip": 1.0, "wear_km": 1.0 / 90.0,
-		"t_opt": 80.0, "t_win": 30.0, "heat": 1.05, "start_t": 55.0, "wet_curve": [0.84, 0.90, 0.86, 0.70], "slick": false},
+		"t_opt": 60.0, "t_win": 32.0, "heat": 1.05, "start_t": 50.0, "wet_curve": [0.84, 0.90, 0.86, 0.70], "slick": false},
 	"wet": {"name": "Chuva", "code": "W", "label": "WET", "color": Color(0.15, 0.45, 1.0), "grip": 1.0, "wear_km": 1.0 / 100.0,
-		"t_opt": 68.0, "t_win": 30.0, "heat": 1.0, "start_t": 50.0, "wet_curve": [0.72, 0.80, 0.85, 0.84], "slick": false},
+		"t_opt": 42.0, "t_win": 30.0, "heat": 1.0, "start_t": 45.0, "wet_curve": [0.72, 0.80, 0.85, 0.84], "slick": false},
 }
 
 

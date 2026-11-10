@@ -285,9 +285,14 @@ func place(xf: Transform3D) -> void:
 
 func reset_to_track() -> void:
 	var i := track.locate(global_position, t_idx)
-	var lat := clampf(track.line_off[i], -track.half_width + 1.5, track.half_width - 1.5)
+	# fica do lado oposto ao traçado ideal (fora do caminho de quem vem)
+	var line := track.line_off[i]
+	var lat := -signf(line if absf(line) > 0.5 else lateral) * (track.half_width - 2.0)
 	place(track.frame(i, lat, 0.0))
 	gear = 1
+	for w in wheels:
+		var wh: Wheel = w
+		wh.temp = maxf(wh.temp, _t_opt - 25.0)
 
 
 func kmh() -> float:
@@ -389,11 +394,13 @@ func _physics_process(dt: float) -> void:
 	_auto_gearbox(dt)
 
 	# --- aerodinâmica ativa
-	aero_available = track.aero_zone[t_idx] == 1 and pit_state < Pit.ENTRY
+	# modo reta só em zona de reta, pista seca (direção de prova desativa no molhado) e carro andando reto
+	aero_available = track.aero_zone[t_idx] == 1 and pit_state < Pit.ENTRY and wetness < 0.4
+	var cornering := absf(g_force.x) > 1.0 or absf(steer_angle) > deg_to_rad(1.6) or absf(angular_velocity.dot(upv)) > 0.12
 	if aero_open:
-		if not aero_available or in_brake > 0.08 or absf(in_steer) > 0.45:
+		if not aero_available or brake_in > 0.05 or cornering:
 			aero_open = false
-	elif want_aero and aero_available and in_brake < 0.05:
+	elif want_aero and aero_available and brake_in < 0.05 and not cornering:
 		aero_open = true
 	# --- unidade de potência
 	var r_gear: float = RATIOS[gear + 1]

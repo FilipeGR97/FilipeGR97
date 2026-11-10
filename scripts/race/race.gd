@@ -53,6 +53,7 @@ var _rng := RandomNumberGenerator.new()
 var _fuel_per_lap := 1.3
 var _sprays := {}
 var _best_overall := INF
+var _num_down := [false, false, false, false, false, false, false]
 
 
 func _ready() -> void:
@@ -164,12 +165,15 @@ func _spawn_cars(ses: Dictionary, tdef: Dictionary) -> void:
 				adv.cars = cars
 				adv.race = self
 				car.controller = adv
+			car.compounds_used.clear()
 			car.set_compound(start_c, true)
 			car.next_compound = "hard" if start_c != "hard" else "medium"
 			if not bool(Tyres.get_data(start_c)["slick"]):
 				car.next_compound = start_c
 		else:
-			var skill := lerpf(0.86, 1.0, diff) * lerpf(0.97, 1.0, (float(e["driver"]["skill"]) - 0.95) / 0.05)
+			var drv_k := lerpf(0.985, 1.0, clampf((float(e["driver"]["skill"]) - 0.95) / 0.05, 0.0, 1.0))
+			var aero_k := 1.0 - (1.0 - float(Teams.team(int(e["team"]))["aero"])) * 0.5
+			var skill := lerpf(0.86, 1.0, diff) * drv_k * aero_k
 			var ai := AIDriver.new(clampf(skill, 0.8, 1.0))
 			ai.cars = cars
 			ai.race = self
@@ -177,6 +181,7 @@ func _spawn_cars(ses: Dictionary, tdef: Dictionary) -> void:
 			var c := auto_c
 			if auto_c == "medium":
 				c = ["medium", "medium", "hard", "soft"][_rng.randi() % 4]
+			car.compounds_used.clear()
 			car.set_compound(c, true)
 			if _total_laps >= 6 and bool(Tyres.get_data(c)["slick"]):
 				ai.planned_stop_lap = int(round(_total_laps * _rng.randf_range(0.38, 0.6)))
@@ -263,7 +268,7 @@ func laps_total() -> int:
 
 
 func mandatory_compounds() -> bool:
-	return is_race() and bool(Game.session["mandatory_compounds"]) and weather.wetness < 0.2 and _total_laps >= 5
+	return is_race() and bool(Game.session["mandatory_compounds"]) and weather.wetness < 0.2 and _total_laps >= 10
 
 
 func fuel_per_lap() -> float:
@@ -335,8 +340,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		set_paused(not _paused)
 	elif _paused:
 		return
-	elif event.is_action_pressed("camera_next"):
-		camera.next_view()
 	elif event.is_action_pressed("reset_car") and player and state != "intro" and state != "lights":
 		player.reset_to_track()
 		timing[player].lap_valid = false
@@ -344,8 +347,21 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(_dt: float) -> void:
-	if camera:
-		camera.look_back = Input.is_action_pressed("look_back")
+	if camera == null or _paused:
+		return
+	camera.look_back = Input.is_action_pressed("look_back")
+	var changed := false
+	if Input.is_action_just_pressed("camera_next"):
+		camera.next_view()
+		changed = true
+	for k in CameraRig.View.size():
+		if Input.is_key_pressed(KEY_1 + k) and not _num_down[k]:
+			camera.view = k as CameraRig.View
+			changed = true
+		_num_down[k] = Input.is_key_pressed(KEY_1 + k)
+	if changed:
+		Game.settings["camera"] = camera.view
+		hud.message("Câmera: %s" % CameraRig.NAMES[camera.view], Color.WHITE, 1.2)
 
 
 func set_paused(p: bool) -> void:
@@ -516,6 +532,16 @@ func _on_line(car: Car, t: Timing) -> void:
 		elif car == player and not t.lap_valid:
 			hud.message("Volta %s (inválida)" % Game.fmt_time(lap), Color(1, 0.6, 0.3), 2.0)
 		car.on_new_lap()
+		if car == standings[0] and OS.get_cmdline_user_args().has("racelog"):
+			var line := "[volta %d] " % t.laps_done
+			for c in standings:
+				var tc: Timing = timing[c]
+				line += "%s %s | " % [c.driver["code"], Game.fmt_time(tc.last_lap)]
+			print(line)
+			var gl := "   intervalo p/ líder: "
+			for c in standings:
+				gl += "%s %.1f  " % [c.driver["code"], maxf(gap_seconds(c, standings[0]), 0.0)]
+			print(gl)
 	t.lap_start = now
 	t.sector_start = now
 	t.sector = 0
@@ -543,6 +569,8 @@ func _on_line(car: Car, t: Timing) -> void:
 				car.controller = ai
 		elif t.laps_done == _total_laps - 1 and car == player:
 			hud.message("ÚLTIMA VOLTA", Color.WHITE, 2.5)
+		if car == player and mandatory_compounds() and car.compounds_used.size() < 2 and _total_laps - t.laps_done <= 3 and _total_laps - t.laps_done >= 1:
+			hud.message("⚠ Falta trocar de composto — peça BOX [P] ou será desclassificado", UIKit.YELLOW, 4.0)
 
 
 func _compute_standings() -> void:
@@ -603,6 +631,16 @@ func _update_sprays() -> void:
 		sp.amount_ratio = clampf((car as Car).speed / 80.0, 0.2, 1.0)
 
 
+func _dsq(car: Car) -> bool:
+	if not mandatory_compounds():
+		return false
+	var dry := 0
+	for k in car.compounds_used:
+		if bool(Tyres.get_data(k)["slick"]):
+			dry += 1
+	return dry < 2 and timing[car].finished
+
+
 func _show_results() -> void:
 	_results_shown = true
 	_compute_standings()
@@ -613,6 +651,10 @@ func _show_results() -> void:
 	final.sort_custom(func(a, b):
 		var ta: Timing = timing[a]
 		var tb: Timing = timing[b]
+		var da := _dsq(a)
+		var db := _dsq(b)
+		if da != db:
+			return db
 		if ta.finished != tb.finished:
 			return ta.finished
 		if ta.finished:
@@ -625,7 +667,9 @@ func _show_results() -> void:
 		var car: Car = final[i]
 		var t: Timing = timing[car]
 		var tm := ""
-		if i == 0:
+		if _dsq(car):
+			tm = "DESCLASSIFICADO"
+		elif i == 0:
 			tm = Game.fmt_time(t.finish_time)
 		elif t.finished and t.laps_done < leader.laps_done:
 			tm = "+%d volta(s)" % (leader.laps_done - t.laps_done)
@@ -633,10 +677,10 @@ func _show_results() -> void:
 			tm = "+%.3f" % (t.finish_time - leader.finish_time)
 		else:
 			tm = "em pista"
-		rows.append({"player": car == player, "cols": [i + 1, car.driver["name"], car.team["name"], tm, Game.fmt_time(t.best_lap) if t.best_lap > 0 else "--", car.pit_stops, ("+%ds" % int(t.penalty)) if t.penalty > 0.0 else ""]})
+		rows.append({"player": car == player, "cols": ["DSQ" if _dsq(car) else i + 1, car.driver["name"], car.team["name"], tm, Game.fmt_time(t.best_lap) if t.best_lap > 0 else "--", car.pit_stops, ("+%ds" % int(t.penalty)) if t.penalty > 0.0 else ""]})
 	var warn := ""
-	if mandatory_compounds() and player.compounds_used.size() < 2:
-		warn = "  ⚠ DESCLASSIFICADO: não usou 2 compostos"
+	if _dsq(player):
+		warn = "  — você foi desclassificado (não usou 2 compostos secos)"
 	hud.show_results(rows, "RESULTADO FINAL" + warn)
 	print("[corrida] resultado final: %d carros, vencedor %s, jogador P%d" % [rows.size(), final[0].driver["name"], final.find(player) + 1])
 	var pits := 0
@@ -646,4 +690,8 @@ func _show_results() -> void:
 		if (c as Car).compounds_used.size() >= 2:
 			two += 1
 	print("[corrida] pit stops totais: %d, carros com 2+ compostos: %d/%d" % [pits, two, final.size()])
+	var laps_txt := ""
+	for c in final:
+		laps_txt += "%s:%d " % [c.driver["code"], timing[c].laps_done]
+	print("[corrida] voltas completadas: " + laps_txt)
 	Game.last_results = rows

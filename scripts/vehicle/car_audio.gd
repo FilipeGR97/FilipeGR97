@@ -22,6 +22,8 @@ var _tyre: Node
 var _wind: Node
 var _kerb: Node
 var _shift_dip := 0.0
+var _whine_amt := 0.3
+var _pitch_k := 1.0
 
 
 func setup(p_car: Car, p_spatial: bool) -> void:
@@ -31,7 +33,10 @@ func setup(p_car: Car, p_spatial: bool) -> void:
 	var prof: Dictionary = Teams.engine(key)["sound"]
 	_on = _player(_engine_stream(key, prof, true), 0.0)
 	_off = _player(_engine_stream(key, prof, false), -6.0)
+	_whine_amt = float(prof.get("whine", 0.0))
 	_whine = _player(_tone_stream("whine", [[1200.0, 1.0], [2400.0, 0.35], [3600.0, 0.12]]), -18.0)
+	# cada equipe com afinação levemente diferente (escapamento/mapa), mesmo com o mesmo motor
+	_pitch_k = 1.0 + float((hash(String(car.team["name"])) % 9) - 4) * 0.012
 	if not spatial:
 		_tyre = _player(_noise_stream("tyre", 0.12, 0.35), -40.0)
 		_wind = _player(_noise_stream("wind", 0.02, 0.0), -40.0)
@@ -69,7 +74,7 @@ func _process(dt: float) -> void:
 		return
 	var ev: float = Game.settings["engine_volume"]
 	var rpm := car.rpm
-	var pitch := clampf(rpm / BASE_RPM, 0.55, 2.25)
+	var pitch := clampf(rpm / BASE_RPM * _pitch_k, 0.55, 2.3)
 	var thr := car.throttle_eff
 	_shift_dip = maxf(_shift_dip - dt * 12.0, 0.0)
 	var ld := clampf(thr * 1.15, 0.0, 1.0)
@@ -80,7 +85,9 @@ func _process(dt: float) -> void:
 	_apply(_off, pitch, base + lerpf(-2.0 + rpm_k * 2.0, -24.0, ld) + dip)
 	# turbo + MGU-K (assobio elétrico)
 	var whine_pitch := clampf(0.4 + rpm / 12500.0 * 0.9 + car.ers_deploy_kw / 350.0 * 0.15, 0.3, 1.6)
-	_apply(_whine, whine_pitch, base - 24.0 + car.ers_deploy_kw / 350.0 * 8.0 + ld * 4.0)
+	# MGU-K (elétrico) existe em todos; turbo só nos motores turbo
+	var turbo := linear_to_db(maxf(_whine_amt / 0.35, 0.05)) * 0.5
+	_apply(_whine, whine_pitch, base - 26.0 + car.ers_deploy_kw / 350.0 * 8.0 + ld * 4.0 * _whine_amt / 0.35 + turbo)
 	if not spatial:
 		var slip := 0.0
 		var kerb := 0.0
@@ -145,8 +152,10 @@ static func _engine_stream(key: String, prof: Dictionary, on: bool) -> AudioStre
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(ck)
 	var harm: Array = prof["harm"]
-	var orders := [1.0, 2.0, 3.0, 6.0, 9.0, 12.0, 15.0, 18.0]   # múltiplos de rpm/120 (meia ordem)
+	var orders: Array = prof["orders"]     # múltiplos de rpm/120 (meia ordem)
 	var f0 := BASE_RPM / 120.0
+	var cyl := float(prof.get("cyl", 6))
+	var uneven := float(prof.get("uneven", 0.0))
 	var ph := []
 	for k in orders.size():
 		ph.append(rng.randf() * TAU)
@@ -158,17 +167,19 @@ static func _engine_stream(key: String, prof: Dictionary, on: bool) -> AudioStre
 	buf.resize(total)
 	var lp := 0.0
 	var lp2 := 0.0
-	var fire := f0 * 6.0
+	var fire := f0 * cyl
 	for i in total:
 		var t := float(i) / RATE
 		var s := 0.0
 		for k in orders.size():
 			var a: float = harm[k]
-			if not on and k >= 5:
+			if not on and float(orders[k]) > cyl:
 				a *= 0.5
-			s += a * sin(TAU * f0 * orders[k] * t + ph[k])
-		# pulso de combustão modula o ruído (dá o "rasgado")
+			s += a * sin(TAU * f0 * float(orders[k]) * t + ph[k])
+		# pulso de combustão modula o ruído (dá o "rasgado"); V8 tem queima irregular (ronco)
 		var env := pow(0.5 + 0.5 * sin(TAU * fire * t), 6.0)
+		if uneven > 0.0:
+			env *= 1.0 - uneven + uneven * (0.5 + 0.5 * sin(TAU * f0 * t + 1.3)) * 2.0
 		var wn := rng.randf_range(-1.0, 1.0)
 		lp += (wn - lp) * 0.35
 		lp2 += (lp - lp2) * 0.5

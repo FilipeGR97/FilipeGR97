@@ -46,6 +46,16 @@ const SCENARIOS := [
 
 func _ready() -> void:
 	saved_settings = Game.settings.duplicate()
+	# padrão de fábrica (independe das opções salvas pelo jogador), com overrides por argumento
+	for k in ["abs", "stability", "steering_assist", "auto_gearbox"]:
+		saved_settings[k] = true
+	saved_settings["traction_control"] = 1
+	saved_settings["auto_brake"] = false
+	saved_settings["auto_aero"] = false
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("set:"):
+			var kv := a.substr(4).split("=")
+			saved_settings[kv[0]] = kv[1] == "true"
 	track = Track.new()
 	add_child(track)
 	track.build(Tracks.get_data("serra_azul"), 0.0, 0)
@@ -181,12 +191,12 @@ func _physics_process(dt: float) -> void:
 	_drive(dt)
 	if "trace" in OS.get_cmdline_user_args() and int(t * 120) % 30 == 0:
 		var w2: Car.Wheel = car.wheels[2]
-		print("  t=%.1f v=%.0f vl=%.1f g=%d thr_in=%.2f brk_in=%.2f thr=%.2f tc=%.2f stab=%s om=%.1f sx=%.2f sy=%.2f fz=%.0f sup=%d lat=%.1f yaw=%.2f" % [t, car.kmh(), car.v_long, car.gear, car.in_throttle, car.in_brake, car.throttle_eff, car.tc_cut, car.stab_active, w2.omega, w2.sx, w2.sy, w2.fz, w2.surface, car.lateral, car.angular_velocity.y])
+		print("  t=%.1f v=%.0f vl=%.1f g=%d thr_in=%.2f brk_in=%.2f thr=%.2f tc=%.2f stab=%s aero=%s om=%.1f sx=%.2f sy=%.2f fz=%.0f sup=%d lat=%.1f yaw=%.2f" % [t, car.kmh(), car.v_long, car.gear, car.in_throttle, car.in_brake, car.throttle_eff, car.tc_cut, car.stab_active, car.aero_open, w2.omega, w2.sx, w2.sy, w2.fz, w2.surface, car.lateral, car.angular_velocity.y])
 	var on_track := absf(car.lateral) < track.half_width + 0.5
 	var fwd_ok := (-car.global_transform.basis.z).dot(track.tang[car.t_idx]) > 0.7
 	if recovered_at < 0.0 and on_track and fwd_ok and car.v_long > 15.0 and car.global_transform.basis.y.y > 0.8:
 		recovered_at = t
-	if recovered_at >= 0.0 and car.speed > 12.0:
+	if recovered_at >= 0.0 and car.speed > 12.0 and t > maxf(recovered_at, 0.0) + 4.0:
 		var slip := absf(rad_to_deg(atan2(car.linear_velocity.dot(car.global_transform.basis.x), car.v_long)))
 		if slip > 30.0:
 			spins += 1

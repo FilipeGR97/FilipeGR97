@@ -208,7 +208,7 @@ func _update_info() -> void:
 	var team := Teams.team(_team)
 	var d: Dictionary = team["drivers"][_driver]
 	var eng := Teams.engine(String(team["engine"]))
-	_info.text = "%s\n%s  #%d\nMotor %s" % [String(team["name"]).to_upper(), d["name"], int(d["num"]), eng["name"]]
+	_info.text = "%s\n%s  #%d\nMotor %s %s" % [String(team["name"]).to_upper(), d["name"], int(d["num"]), eng["name"], eng.get("type", "")]
 
 
 func _team_picker() -> void:
@@ -329,7 +329,7 @@ func _show_setup(mode: int) -> void:
 	if mode == Game.Mode.QUICK_RACE:
 		var grid := [-1, 0, 9, 19]
 		_option("Largada", ["Pelo ritmo", "Pole position", "Meio do grid", "Último"], grid.find(int(s["grid_position"])), func(i): s["grid_position"] = grid[i])
-		_check("Regra dos 2 compostos (seco)", bool(s["mandatory_compounds"]), func(v): s["mandatory_compounds"] = v)
+		_check("Regra dos 2 compostos (corridas de 10+ voltas)", bool(s["mandatory_compounds"]), func(v): s["mandatory_compounds"] = v)
 	var go := _button("▶  IR PARA A PISTA", func(): get_tree().change_scene_to_file("res://scenes/race.tscn"))
 	go.add_theme_color_override("font_color", Color.WHITE)
 	_button("Voltar", _show_main)
@@ -348,7 +348,7 @@ func _show_teams() -> void:
 	var upd := func():
 		var t := Teams.team(_team)
 		var e := Teams.engine(String(t["engine"]))
-		lbl.text = "Unidade de potência: %s\nPotência relativa: %.1f%%\nAerodinâmica relativa: %.1f%%\n\nOs nomes e pinturas são fictícios. Você pode editar\nscripts/data/teams.gd para criar suas próprias equipes." % [e["name"], float(t["power"]) * float(e["power"]) * 100.0, float(t["aero"]) * 100.0]
+		lbl.text = "Unidade de potência: %s (%s)\nPotência relativa: %.1f%%\nAerodinâmica relativa: %.1f%%\n\nOs nomes e pinturas são fictícios. Você pode editar\nscripts/data/teams.gd para criar suas próprias equipes." % [e["name"], e.get("type", ""), float(t["power"]) * float(e["power"]) * 100.0, float(t["aero"]) * 100.0]
 	upd.call()
 	for c in _panel.get_children():
 		if c is HBoxContainer:

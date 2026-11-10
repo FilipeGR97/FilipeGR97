@@ -4,6 +4,25 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 1.3 — v0.1.3 (correções finais antes do Patch 2)
+
+| Problema relatado / encontrado | Causa | Correção |
+|---|---|---|
+| Na chuva, carros da IA saíam da pista e nunca voltavam | A IA só se recuperava se ficasse quase parada; andando devagar fora da pista ficava perdida | IA volta para a pista se ficar fora/lenta/na contramão por alguns segundos, reposicionada fora do traçado de quem vem |
+| Volante do piloto girava ao contrário | Sinal invertido na animação | Corrigido |
+| Precisava pausar para trocar de câmera | Tecla tratada num evento que podia ser "comido" pela interface | **C** alterna e **1 a 7** escolhe direto, com aviso na tela |
+| Todos pararam no box na volta 4 de uma corrida de 5 | Regra dos 2 compostos valia a partir de 5 voltas, forçando parada sem sentido | Regra só em corridas de **10+ voltas**; quem não cumprir é **desclassificado** de verdade; aviso faltando 3 voltas |
+| Carros sempre colados | A IA de todas as equipes usava o mesmo alvo nas curvas | Aerodinâmica da equipe + talento do piloto pesam nas curvas; ritmo varia volta a volta |
+| Mesmo som para todos | Só mudava o timbre | Motores **V10 (Valkyr), V6 turbo híbrido (Orion), V8 (Kestrel), V12 (Helix)** + afinação diferente por equipe |
+| (encontrado nos testes, com as SUAS opções) Rodava com "Asa móvel automática" | A asa abria e não fechava quando a curva começava sem frear | Fecha ao detectar curva (força lateral/rotação/esterço); zona termina 120 m antes da frenagem; **desativada na chuva** (como na F1 real) |
+| (encontrado) Pneus de chuva frios demais | Janela de temperatura irreal | Intermediário ~60 °C, chuva ~42 °C |
+| (encontrado) Regra dos 2 compostos nunca desclassificava ninguém | O pneu padrão de fábrica contava como "usado" | Só contam os pneus realmente usados na corrida |
+
+Testes: 14/14 cenários com as configurações padrão **e** com as suas (freio e asa automáticos); câmera trocando
+durante a corrida (C e números); corrida de 8 voltas na chuva com 20 carros.
+
+---
+
 ## Patch 1.2 — v0.1.2 (correções: brita, rodas disparando, chuva)
 
 | Problema relatado / encontrado | Causa | Correção |

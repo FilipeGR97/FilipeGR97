@@ -381,7 +381,7 @@ func _process(dt: float) -> void:
 		_tower_timer = 0.25
 		_update_tower()
 	_update_pit_and_mfd()
-	_cam_lbl.text = "Câmera: %s (C)" % CameraRig.NAMES[race.camera.view]
+	_cam_lbl.text = "Câmera: %s  [C ou 1-7]" % CameraRig.NAMES[race.camera.view]
 
 
 func _update_dash() -> void:
@@ -551,7 +551,7 @@ func _update_pit_and_mfd() -> void:
 		lines += "Balanço de freio:  %.1f%%   [ ]\n" % (car.brake_bias * 100.0)
 		lines += "Compostos usados:  %s\n" % ", ".join(car.compounds_used.map(func(k): return Tyres.get_data(k)["code"]))
 		if race.mandatory_compounds() and car.compounds_used.size() < 2 and bool(Tyres.get_data(car.compound)["slick"]):
-			lines += "\n⚠ Regra: use 2 compostos secos diferentes na corrida"
+			lines += "\n⚠ Regra: use 2 compostos secos diferentes (senão: desclassificação)"
 		_mfd_lbl.text = lines
 
 

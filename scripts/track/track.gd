@@ -378,9 +378,9 @@ func _compute_aero_zones() -> void:
 			var run_len := (k - i) * ds
 			if run_len >= 280.0:
 				var s0 := wrap_s((start + i) * ds + 40.0)
-				var s1 := wrap_s((start + k) * ds - 30.0)
+				var s1 := wrap_s((start + k) * ds - 120.0)
 				aero_zones.append([s0, s1])
-				for q in range(i + 20, k - 15):
+				for q in range(i + 20, k - 60):
 					aero_zone[idx(start + q)] = 1
 				if run_len > best_len:
 					best_len = run_len

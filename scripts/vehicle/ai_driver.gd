@@ -21,6 +21,8 @@ var _think := 0.0
 var _cap := INF
 var _gap_car: Car = null
 var _strat_t := 0.0
+var pace_mod := 1.0          # variação de ritmo volta a volta (consistência do piloto)
+var _lap_seen := -1
 
 
 func _init(p_skill := 0.95) -> void:
@@ -79,7 +81,7 @@ func drive(car: Car, dt: float) -> void:
 	var ahead := tr.idx(car.t_idx + int(maxf(spd * 0.18, 2.0) / tr.ds) + 1)
 	var wet_k := lerpf(1.0, 0.72, car.wetness) if Tyres.get_data(car.compound)["slick"] else lerpf(0.86, 0.80, car.wetness)
 	var tyre_k := 1.0 - car.avg_wear() * 0.08
-	var v_target := tr.speed_prof[ahead] * skill * wet_k * tyre_k
+	var v_target := tr.speed_prof[ahead] * skill * pace_mod * wet_k * tyre_k
 	v_target = minf(v_target, tr.speed_prof[tr.idx(car.t_idx + 1)] * skill * wet_k * 1.05)
 	if absf(_offset) > 1.0:
 		var kc := absf(tr.curv[ahead]) * absf(_offset)
@@ -114,18 +116,25 @@ func drive(car: Car, dt: float) -> void:
 	# erro ocasional (pilotos menos habilidosos erram mais)
 	if _rng.randf() < dt * (1.0 - skill) * 0.08:
 		_mistake = _rng.randf_range(1.0, 4.0)
-	# ------------------------------------------------ carro preso / rodou
-	if spd < 2.0 and race and race.has_method("is_racing") and race.is_racing():
+	# ------------------------------------------------ carro preso / rodou / perdido fora da pista
+	var racing: bool = race != null and race.has_method("is_racing") and race.is_racing()
+	if racing and (spd < 4.5 or absf(car.lateral) > tr.half_width + 1.2 or car.wrong_way):
 		_stuck += dt
-		if _stuck > 3.5:
+		var limit := 3.5 if spd < 4.5 else 6.0
+		if _stuck > limit:
 			_stuck = 0.0
+			_offset = 0.0
+			_offset_target = 0.0
 			car.reset_to_track()
 	else:
-		_stuck = 0.0
+		_stuck = maxf(_stuck - dt * 2.0, 0.0)
 	# ------------------------------------------------ estratégia (1 Hz)
 	_strat_t -= dt
 	if _strat_t <= 0.0:
 		_strat_t = 1.0
+		if car.tyre_laps != _lap_seen:
+			_lap_seen = car.tyre_laps
+			pace_mod = 1.0 + _rng.randf_range(-0.005, 0.004)
 		_strategy(car)
 
 
