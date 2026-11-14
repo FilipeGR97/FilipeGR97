@@ -48,6 +48,7 @@ var last_results: Array = []
 var _shots: Array = []      # ferramenta de desenvolvimento: "shots=120@a.png,300@b.png"
 var _frame := 0
 var dev_autodrive := false
+var dev_teams_screen := false
 
 
 func _ready() -> void:
@@ -75,6 +76,8 @@ func _ready() -> void:
 			session["driver"] = 0
 		elif a.begins_with("ai="):
 			session["ai_count"] = int(a.substr(3))
+		elif a == "teamsscreen":
+			dev_teams_screen = true
 		elif a == "autodrive":
 			dev_autodrive = true
 
@@ -136,6 +139,15 @@ func save_settings() -> void:
 
 
 func apply_audio() -> void:
+	var has_lim := false
+	for i in AudioServer.get_bus_effect_count(0):
+		if AudioServer.get_bus_effect(0, i) is AudioEffectHardLimiter:
+			has_lim = true
+	if not has_lim:
+		var lim := AudioEffectHardLimiter.new()
+		lim.ceiling_db = -1.0
+		lim.pre_gain_db = 0.0
+		AudioServer.add_bus_effect(0, lim)
 	var v: float = settings["master_volume"]
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(v, 0.0001)))
 

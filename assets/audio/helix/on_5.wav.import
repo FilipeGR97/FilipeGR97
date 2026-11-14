@@ -2,13 +2,13 @@
 
 importer="wav"
 type="AudioStreamWAV"
-uid="uid://dm87cny5ymbtw"
-path="res://.godot/imported/shift_3.wav-0c6c2efde184ac8ebdbc549474b0b220.sample"
+uid="uid://du7s68055u4b8"
+path="res://.godot/imported/on_5.wav-9734412ebc036c26893c79650f1ace1b.sample"
 
 [deps]
 
-source_file="res://assets/audio/shift_3.wav"
-dest_files=["res://.godot/imported/shift_3.wav-0c6c2efde184ac8ebdbc549474b0b220.sample"]
+source_file="res://assets/audio/helix/on_5.wav"
+dest_files=["res://.godot/imported/on_5.wav-9734412ebc036c26893c79650f1ace1b.sample"]
 
 [params]
 

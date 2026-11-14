@@ -2,13 +2,13 @@
 
 importer="wav"
 type="AudioStreamWAV"
-uid="uid://cadoym263mi40"
-path="res://.godot/imported/shift_2.wav-1794276e22a815690734ef3e58cc85c8.sample"
+uid="uid://dhup3nm0hx6uy"
+path="res://.godot/imported/on_5.wav-7421d3238a1f962f073614ade631710f.sample"
 
 [deps]
 
-source_file="res://assets/audio/shift_2.wav"
-dest_files=["res://.godot/imported/shift_2.wav-1794276e22a815690734ef3e58cc85c8.sample"]
+source_file="res://assets/audio/kestrel/on_5.wav"
+dest_files=["res://.godot/imported/on_5.wav-7421d3238a1f962f073614ade631710f.sample"]
 
 [params]
 

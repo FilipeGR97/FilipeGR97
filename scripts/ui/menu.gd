@@ -65,6 +65,8 @@ func _ready() -> void:
 	ver.position = Vector2(60, -40)
 	_ui.add_child(ver)
 	_show_main()
+	if Game.dev_teams_screen:
+		_show_teams()
 
 
 # ======================================================================= palco 3D
@@ -208,7 +210,7 @@ func _update_info() -> void:
 	var team := Teams.team(_team)
 	var d: Dictionary = team["drivers"][_driver]
 	var eng := Teams.engine(String(team["engine"]))
-	_info.text = "%s\n%s  #%d\nMotor %s %s" % [String(team["name"]).to_upper(), d["name"], int(d["num"]), eng["name"], eng.get("type", "")]
+	_info.text = "%s  ·  %s \"%s\"\n%s  #%d\n%s — %s %s" % [String(team["name"]).to_upper(), team.get("chassis", ""), team.get("nick", ""), d["name"], int(d["num"]), eng.get("model", eng["name"]), eng.get("layout", ""), eng.get("displacement", "")]
 
 
 func _team_picker() -> void:
@@ -341,14 +343,26 @@ func _show_teams() -> void:
 	_clear()
 	_header("EQUIPES E CARROS")
 	_team_picker()
-	var lbl := UIKit.label("", 17, Color.WHITE)
+	var lbl := UIKit.label("", 15, Color.WHITE)
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lbl.custom_minimum_size = Vector2(440, 0)
 	_panel.add_child(lbl)
 	var upd := func():
 		var t := Teams.team(_team)
 		var e := Teams.engine(String(t["engine"]))
-		lbl.text = "Unidade de potência: %s (%s)\nPotência relativa: %.1f%%\nAerodinâmica relativa: %.1f%%\n\nOs nomes e pinturas são fictícios. Você pode editar\nscripts/data/teams.gd para criar suas próprias equipes." % [e["name"], e.get("type", ""), float(t["power"]) * float(e["power"]) * 100.0, float(t["aero"]) * 100.0]
+		var sp: Dictionary = Teams.SPEC
+		var txt := "CARRO\n"
+		txt += "  Chassi: %s \"%s\"\n  Sede: %s\n" % [t.get("chassis", "-"), t.get("nick", "-"), t.get("base", "-")]
+		txt += "  Pilotos: %s #%d · %s #%d\n\n" % [t["drivers"][0]["name"], int(t["drivers"][0]["num"]), t["drivers"][1]["name"], int(t["drivers"][1]["num"])]
+		txt += "MOTOR\n"
+		txt += "  %s — %s %s\n  %s · giro máx. %s rpm\n" % [e.get("model", e["name"]), e.get("layout", ""), e.get("displacement", ""), e.get("aspiration", ""), str(e.get("rpm_max", "-"))]
+		txt += "  (som gravado de um motor real dessa arquitetura)\n\n"
+		txt += "DESEMPENHO NO JOGO\n"
+		txt += "  Potência relativa: %.1f%%   Aerodinâmica: %.1f%%\n\n" % [float(t["power"]) * float(e["power"]) * 100.0, float(t["aero"]) * 100.0]
+		txt += "FICHA COMUM (regulamento)\n"
+		txt += "  %s\n  Entre-eixos %s · largura %s\n  %s\n  %s\n  %s\n  Bateria %s\n  Aerodinâmica %s\n\n" % [sp["peso"], sp["entre_eixos"], sp["largura"], sp["cambio"], sp["pneus"], sp["potencia"], sp["bateria"], sp["aero"]]
+		txt += "Equipes, carros e motores são fictícios (editáveis em scripts/data/teams.gd)."
+		lbl.text = txt
 	upd.call()
 	for c in _panel.get_children():
 		if c is HBoxContainer:

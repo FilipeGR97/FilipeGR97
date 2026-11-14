@@ -4,6 +4,27 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 1.5 — v0.1.5 (som fiel dos motores + ficha dos carros)
+
+**Fonte:** `Sonsmotor/videoplayback.m4a` (gravação de perto: V6, V8, V10, V12 e H16 — o H16 foi ignorado).
+
+| Problema relatado | Causa | Correção |
+|---|---|---|
+| Som não fiel | Só 2 loops por motor, perto de 11.500 rpm; o resto era o mesmo som esticado | **6–7 loops por motor** tirados das puxadas reais do vídeo, de ~6.700 a 12.000 rpm |
+| Estourado na redução | Loops de alívio gravados em giro baixo eram esticados ~2x quando a redução levava o motor ao alto | Alívio cobrindo toda a faixa; esticamento máximo limitado; giro do som desliza ~60 ms em vez de saltar |
+| Troca de marcha estourada / "sem sentido" | Som de troca vinha de outro motor (V8) e era tocado alto | Troca = corte curto de ignição (~70 ms) + queda de giro, como no vídeo |
+| Estouro geral | Várias camadas somadas sem folga | Folga de 6 dB nas camadas + **limitador** no canal mestre; chiado de pneu/zebra só acima do limite de aderência |
+| (IA) estalos ao trocar de loop | 1 voz trocando de gravação no meio do som | 2 vozes (loops pares/ímpares): a troca acontece na voz silenciosa |
+
+Validação: áudio do jogo gravado e comparado por espectrograma com o vídeo (mesmas linhas harmônicas e
+"dente de serra" de trocas); picos 0,38–0,50 sozinho e 0,62 com 20 carros, **0 amostras estouradas**
+(antes 1,0); chiado na frenagem ~20 dB abaixo do motor. FPS com 20 carros: 65–69 (Patch 1.4: 62).
+
+**Ficha de cada carro** (menu → Equipes e Carros e `docs/EQUIPES.md`): chassi fictício (código, apelido, sede),
+pilotos, motor (modelo, arquitetura, cilindrada, aspiração, giro máximo), desempenho relativo e ficha de regulamento.
+
+---
+
 ## Patch 1.4 — v0.1.4 (sons reais dos motores)
 
 - **Motores com som gravado** a partir dos arquivos em `Sonsmotor/` (usados os `*_trocas_refinadas.mp3`, que seguram

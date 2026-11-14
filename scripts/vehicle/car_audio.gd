@@ -25,6 +25,9 @@ var _shift_dip := 0.0
 var _whine_amt := 0.3
 var _pitch_k := 1.0
 var _samples := false
+var _arpm := 0.0
+const PITCH_MIN := 0.5
+const PITCH_MAX := 1.4
 var _on_layers: Array = []      # [{"p": player, "rpm": float, "streams": [...]}]
 var _off_layers: Array = []
 var _shift: Node
@@ -46,7 +49,7 @@ func setup(p_car: Car, p_spatial: bool) -> void:
 	_whine_amt = float(prof.get("whine", 0.0))
 	_whine = _player(_tone_stream("whine", [[1200.0, 1.0], [2400.0, 0.35], [3600.0, 0.12]]), -18.0)
 	# cada equipe com afinação levemente diferente (escapamento/mapa), mesmo com o mesmo motor
-	_pitch_k = 1.0 + float((hash(String(car.team["name"])) % 9) - 4) * 0.012
+	_pitch_k = 1.0 + float((hash(String(car.team["name"])) % 7) - 3) * 0.005
 	if not spatial:
 		_tyre = _player(_noise_stream("tyre", 0.12, 0.35), -40.0)
 		_wind = _player(_noise_stream("wind", 0.02, 0.0), -40.0)
@@ -82,14 +85,17 @@ func _build_sample_layers(key: String) -> void:
 		var list: Array = data[kind]
 		var layers: Array = _on_layers if kind == "on" else _off_layers
 		if spatial:
-			# carros da IA: 1 voz por camada (troca o loop conforme o giro) — economiza mixagem
-			var p := _player(_sample("res://assets/audio/%s/%s" % [key, list[list.size() - 1]["file"]]), -80.0)
+			# carros da IA: 2 vozes por camada — uma toca os loops de índice par, outra os ímpares.
+			# Entre dois loops vizinhos sempre há um par e um ímpar; quando o giro passa para o próximo par
+			# de loops, quem troca de gravação é a voz que já está com volume ~0 (sem estalo).
 			var rpms := []
 			var streams := []
 			for e in list:
 				rpms.append(float(e["rpm"]))
 				streams.append(_sample("res://assets/audio/%s/%s" % [key, e["file"]]))
-			layers.append({"p": p, "rpms": rpms, "streams": streams, "cur": list.size() - 1})
+			var pe := _player(streams[0], -80.0)
+			var po := _player(streams[mini(1, streams.size() - 1)], -80.0)
+			layers.append({"pe": pe, "po": po, "rpms": rpms, "streams": streams, "ce": 0, "co": mini(1, streams.size() - 1)})
 		else:
 			for e in list:
 				var p := _player(_sample("res://assets/audio/%s/%s" % [key, e["file"]]), -80.0)
@@ -143,24 +149,37 @@ static func _weights(rpms: Array, rpm: float) -> PackedFloat32Array:
 
 func _update_samples(base: float, ld: float, dip: float, rpm: float) -> void:
 	var rpm_k := clampf((rpm - 4000.0) / 8000.0, 0.0, 1.0)
-	var on_db := base - 3.0 + lerpf(-13.0, 0.0, ld) + dip + rpm_k * 2.0
-	var off_db := base - 3.0 + lerpf(-2.0, -32.0, ld) + dip - (1.0 - rpm_k) * 4.0
+	var on_db := base - 6.0 + lerpf(-14.0, 0.0, ld) + dip + rpm_k * 2.0
+	var off_db := base - 6.0 + lerpf(-3.0, -34.0, ld) + dip - (1.0 - rpm_k) * 3.0
 	for kind in 2:
 		var layers: Array = _on_layers if kind == 0 else _off_layers
 		var db := on_db if kind == 0 else off_db
 		if spatial:
 			var L: Dictionary = layers[0]
 			var rpms: Array = L["rpms"]
-			var best := 0
+			var w := _weights(rpms, rpm)
+			# índices ativos (no máximo 2 vizinhos)
+			var ie := -1
+			var io := -1
 			for i in rpms.size():
-				if absf(float(rpms[i]) - rpm) < absf(float(rpms[best]) - rpm):
-					best = i
-			var p: Node = L["p"]
-			if best != int(L["cur"]):
-				L["cur"] = best
-				p.set("stream", L["streams"][best])
-				p.call("play")
-			_apply(p, clampf(rpm / float(rpms[best]) * _pitch_k, 0.25, 1.8), db)
+				if w[i] > 0.0005:
+					if i % 2 == 0:
+						ie = i
+					else:
+						io = i
+			for par in 2:
+				var idx := ie if par == 0 else io
+				var p: Node = L["pe"] if par == 0 else L["po"]
+				var ck := "ce" if par == 0 else "co"
+				if idx < 0:
+					_apply(p, 1.0, -80.0)
+					continue
+				if idx != int(L[ck]):
+					L[ck] = idx
+					p.set("stream", L["streams"][idx])
+					p.call("play")
+				var lin := float(w[idx])
+				_apply(p, clampf(rpm / float(rpms[idx]) * _pitch_k, PITCH_MIN, PITCH_MAX), db + linear_to_db(maxf(lin, 0.0001)))
 		else:
 			var rpms := []
 			for L in layers:
@@ -170,20 +189,22 @@ func _update_samples(base: float, ld: float, dip: float, rpm: float) -> void:
 				var L: Dictionary = layers[i]
 				var lin := float(w[i])
 				var vdb := db + (linear_to_db(lin) if lin > 0.001 else -80.0)
-				_apply(L["p"], clampf(rpm / float(L["rpm"]) * _pitch_k, 0.25, 1.8), vdb)
+				_apply(L["p"], clampf(rpm / float(L["rpm"]) * _pitch_k, PITCH_MIN, PITCH_MAX), vdb)
 
 
 func _process(dt: float) -> void:
 	if car == null:
 		return
 	var ev: float = Game.settings["engine_volume"]
-	var rpm := car.rpm
+	_arpm = move_toward(_arpm if _arpm > 0.0 else car.rpm, car.rpm, dt * 70000.0)
+	var rpm := _arpm
 	var pitch := clampf(rpm / BASE_RPM * _pitch_k, 0.55, 2.3)
 	var thr := car.throttle_eff
 	_shift_dip = maxf(_shift_dip - dt * 12.0, 0.0)
 	var ld := clampf(thr * 1.15, 0.0, 1.0)
 	var base := linear_to_db(maxf(ev, 0.001))
-	var dip := -9.0 * _shift_dip
+	# troca de marcha: corte curto da ignição (~70 ms), como nas gravações
+	var dip := -14.0 * _shift_dip * _shift_dip
 	var rpm_k := clampf((rpm - 4000.0) / 8500.0, 0.0, 1.0)
 	if _samples:
 		_update_samples(base, ld, dip, rpm)
@@ -201,15 +222,17 @@ func _process(dt: float) -> void:
 		for w in car.wheels:
 			var wh: Car.Wheel = w
 			if wh.grounded:
-				slip = maxf(slip, clampf((absf(wh.sy) / Car.AY_PEAK + absf(wh.sx) / Car.KX_PEAK - 0.85) * 0.8, 0.0, 1.0))
+				# só canta quando passa do pico de aderência (escorregamento combinado > 1)
+				var comb := sqrt(pow(wh.sy / Car.AY_PEAK, 2) + pow(wh.sx / Car.KX_PEAK, 2))
+				slip = maxf(slip, clampf((comb - 1.05) * 1.2, 0.0, 1.0))
 				if wh.surface == Track.Surface.KERB or wh.surface == Track.Surface.GRAVEL:
 					kerb = 1.0
 		slip *= clampf(car.speed / 8.0, 0.0, 1.0)
 		if car.wetness > 0.3:
 			slip *= 0.3
-		_apply(_tyre, 0.9 + slip * 0.2, base - 40.0 + slip * 34.0)
-		_apply(_wind, 0.6 + car.speed / 90.0 * 0.8, base - 45.0 + clampf(car.speed / 90.0, 0.0, 1.0) * 30.0)
-		_apply(_kerb, 0.7 + car.speed / 100.0, base - 50.0 + kerb * clampf(car.speed / 25.0, 0.0, 1.0) * 42.0)
+		_apply(_tyre, 0.9 + slip * 0.2, base - 44.0 + slip * 26.0)
+		_apply(_wind, 0.6 + car.speed / 90.0 * 0.8, base - 45.0 + clampf(car.speed / 90.0, 0.0, 1.0) * 24.0)
+		_apply(_kerb, 0.7 + car.speed / 100.0, base - 50.0 + kerb * clampf(car.speed / 25.0, 0.0, 1.0) * 30.0)
 
 
 func _apply(p: Node, pitch: float, db: float) -> void:
