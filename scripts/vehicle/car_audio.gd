@@ -26,6 +26,10 @@ var _whine_amt := 0.3
 var _pitch_k := 1.0
 var _samples := false
 var _arpm := 0.0
+var _t_live := 0.0
+var _live_k := 1.0
+var _vol_jit := 0.0
+var _phase := 0.0
 const PITCH_MIN := 0.5
 const PITCH_MAX := 1.4
 var _on_layers: Array = []      # [{"p": player, "rpm": float, "streams": [...]}]
@@ -40,6 +44,7 @@ func setup(p_car: Car, p_spatial: bool) -> void:
 	var key := String(car.team["engine"])
 	var prof: Dictionary = Teams.engine(key)["sound"]
 	_rng.seed = hash(String(car.driver.get("name", "")))
+	_phase = _rng.randf() * TAU
 	if EngineSamples.DATA.has(key) and ResourceLoader.exists("res://assets/audio/%s/on_0.wav" % key):
 		_samples = true
 		_build_sample_layers(key)
@@ -65,7 +70,8 @@ func _player(stream: AudioStream, vol: float) -> Node:
 		p3.max_distance = 450.0
 		p3.volume_db = vol - 3.0
 		p3.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_PHYSICS_STEP
-		p3.attenuation_filter_cutoff_hz = 9000.0
+		p3.attenuation_filter_cutoff_hz = 4200.0      # adversários abafados (o seu motor fica nítido)
+		p3.attenuation_filter_db = -18.0
 		p3.max_polyphony = 1
 		p = p3
 	else:
@@ -140,6 +146,8 @@ static func _weights(rpms: Array, rpm: float) -> PackedFloat32Array:
 		var b: float = rpms[i + 1]
 		if rpm <= b:
 			var t := clampf((rpm - a) / maxf(b - a, 1.0), 0.0, 1.0)
+			# só mistura na faixa central (40%) entre os dois loops: menos tempo com dois sons somados ("oco")
+			t = clampf((t - 0.3) / 0.4, 0.0, 1.0)
 			w[i] = cos(t * PI * 0.5)
 			w[i + 1] = sin(t * PI * 0.5)
 			return w
@@ -149,8 +157,9 @@ static func _weights(rpms: Array, rpm: float) -> PackedFloat32Array:
 
 func _update_samples(base: float, ld: float, dip: float, rpm: float) -> void:
 	var rpm_k := clampf((rpm - 4000.0) / 8000.0, 0.0, 1.0)
-	var on_db := base - 6.0 + lerpf(-14.0, 0.0, ld) + dip + rpm_k * 2.0
-	var off_db := base - 6.0 + lerpf(-3.0, -34.0, ld) + dip - (1.0 - rpm_k) * 3.0
+	var own := 0.0 if not spatial else -5.0      # carro do jogador em destaque; adversários mais baixos
+	var on_db := base + own + lerpf(-14.0, 0.0, ld) + dip + rpm_k * 2.5 + _vol_jit
+	var off_db := base + own + lerpf(-3.0, -34.0, ld) + dip - (1.0 - rpm_k) * 3.0 + _vol_jit
 	for kind in 2:
 		var layers: Array = _on_layers if kind == 0 else _off_layers
 		var db := on_db if kind == 0 else off_db
@@ -196,8 +205,11 @@ func _process(dt: float) -> void:
 	if car == null:
 		return
 	var ev: float = Game.settings["engine_volume"]
+	_t_live += dt
+	_live_k = 1.0 + 0.0035 * sin(_t_live * 0.83 + _phase) + 0.0022 * sin(_t_live * 2.31 + _phase * 1.7) + 0.0012 * sin(_t_live * 5.7)
+	_vol_jit = 0.6 * sin(_t_live * 1.37 + _phase) + 0.35 * sin(_t_live * 3.9 + _phase * 0.5)
 	_arpm = move_toward(_arpm if _arpm > 0.0 else car.rpm, car.rpm, dt * 70000.0)
-	var rpm := _arpm
+	var rpm := _arpm * _live_k
 	var pitch := clampf(rpm / BASE_RPM * _pitch_k, 0.55, 2.3)
 	var thr := car.throttle_eff
 	_shift_dip = maxf(_shift_dip - dt * 12.0, 0.0)
@@ -215,7 +227,11 @@ func _process(dt: float) -> void:
 	var whine_pitch := clampf(0.4 + rpm / 12500.0 * 0.9 + car.ers_deploy_kw / 350.0 * 0.15, 0.3, 1.6)
 	# MGU-K (elétrico) existe em todos; turbo só nos motores turbo
 	var turbo := linear_to_db(maxf(_whine_amt / 0.35, 0.05)) * 0.5
-	_apply(_whine, whine_pitch, base - 26.0 + car.ers_deploy_kw / 350.0 * 8.0 + ld * 4.0 * _whine_amt / 0.35 + turbo)
+	# com gravação real o turbo/MGU-K já está no som; o assobio sintético só criava batimento ("na na na")
+	var whine_db := base - 26.0 + car.ers_deploy_kw / 350.0 * 8.0 + ld * 4.0 * _whine_amt / 0.35 + turbo
+	if _samples:
+		whine_db = -80.0
+	_apply(_whine, whine_pitch, whine_db)
 	if not spatial:
 		var slip := 0.0
 		var kerb := 0.0
@@ -231,7 +247,7 @@ func _process(dt: float) -> void:
 		if car.wetness > 0.3:
 			slip *= 0.3
 		_apply(_tyre, 0.9 + slip * 0.2, base - 44.0 + slip * 26.0)
-		_apply(_wind, 0.6 + car.speed / 90.0 * 0.8, base - 45.0 + clampf(car.speed / 90.0, 0.0, 1.0) * 24.0)
+		_apply(_wind, 0.6 + car.speed / 90.0 * 0.8, base - 48.0 + clampf(car.speed / 90.0, 0.0, 1.0) * 22.0)
 		_apply(_kerb, 0.7 + car.speed / 100.0, base - 50.0 + kerb * clampf(car.speed / 25.0, 0.0, 1.0) * 30.0)
 
 

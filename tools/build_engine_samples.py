@@ -22,7 +22,7 @@ DBG = sys.argv[2] if len(sys.argv) > 2 else os.path.join(PROJ, ".audio_debug")
 SRC = os.path.join(PROJ, "Sonsmotor", "videoplayback.m4a")
 SR = 44100
 TOP_RPM = 12000.0
-N_ON = 7          # loops "acelerando" por motor
+N_ON = 8          # loops "acelerando" por motor
 N_OFF = 4         # loops "aliviando" por motor
 
 # trechos da gravação (s) e faixa inicial da linha harmônica guia (Hz)
@@ -97,7 +97,26 @@ def segments(t, tr, min_len=0.3):
     return out
 
 
-def dechirp_loop(x, t_tr, f_tr, t0, t1, cycles_s=0.45):
+def envelope(y, cutoff=18.0):
+    return np.sqrt(np.maximum(signal.sosfiltfilt(signal.butter(2, cutoff, "lp", fs=SR, output="sos"), y ** 2), 0.0) + 1e-10)
+
+
+def flatten(y, cutoff=18.0):
+    """Remove a modulação lenta de volume (pulsação < cutoff Hz) sem mexer no timbre.
+    O ganho é limitado (no máx. 2x) para nunca amplificar trechos quase silenciosos."""
+    env = envelope(y, cutoff)
+    med = float(np.median(env))
+    env = np.maximum(env, med * 0.5)
+    return y / env * med
+
+
+def has_dropout(y):
+    """Trecho com 'buraco' de volume (corte de ignição na troca de marcha, etc.)."""
+    env = envelope(y, 25.0)
+    return float(np.min(env[len(env) // 20: -len(env) // 20])) < 0.35 * float(np.median(env))
+
+
+def dechirp_loop(x, t_tr, f_tr, t0, t1, cycles_s=1.1):
     n0, n1 = int(t0 * SR), int(t1 * SR)
     seg = x[n0:n1]
     tt = np.arange(len(seg)) / SR + t0
@@ -107,7 +126,8 @@ def dechirp_loop(x, t_tr, f_tr, t0, t1, cycles_s=0.45):
     n_out = int(phase[-1] / fm * SR) - 1
     idx = np.interp(np.arange(n_out) * fm / SR, phase, np.arange(len(seg)))
     y = np.interp(idx, np.arange(len(seg)), seg)
-    xf = int(0.025 * SR)
+    y = flatten(y)
+    xf = int(0.04 * SR)
     cyc = max(4, int(round(cycles_s * fm)))
     cyc = max(2, min(cyc, int((len(y) - xf - 2) / SR * fm)))
     L = int(round(cyc / fm * SR))
@@ -122,7 +142,75 @@ def dechirp_loop(x, t_tr, f_tr, t0, t1, cycles_s=0.45):
     return loop, fm
 
 
+def piece(x, t_tr, f_tr, t0, t1, f_target):
+    """Trecho com tom constante, levado exatamente para f_target e sem pulsação de volume."""
+    n0, n1 = int(t0 * SR), int(t1 * SR)
+    seg = x[n0:n1]
+    tt = np.arange(len(seg)) / SR + t0
+    fi = np.interp(tt, t_tr, f_tr)
+    phase = np.cumsum(fi) / SR                      # ciclos acumulados
+    n_out = int(phase[-1] / f_target * SR) - 1
+    idx = np.interp(np.arange(n_out) * f_target / SR, phase, np.arange(len(seg)))
+    if np.any(np.diff(phase) <= 0) or not np.all(np.isfinite(phase)):
+        return np.zeros(0)
+    raw = np.interp(idx, np.arange(len(seg)), seg)
+    if len(raw) < 64 or has_dropout(raw):
+        return np.zeros(0)
+    y = flatten(raw)
+    return y if np.all(np.isfinite(y)) else np.zeros(0)
+
+
+def stitched_loop(x, t_tr, f_tr, cands, f_target, length_s=1.6):
+    """Costura vários trechos diferentes (de marchas/momentos diferentes) no mesmo tom.
+    Resultado: loop longo que não repete o mesmo pedaço — some o 'na na na'."""
+    xf = int(0.03 * SR)
+    ramp = np.sin(np.linspace(0, np.pi / 2, xf)) ** 2
+    out = None
+    used = []
+    tol = 0.03
+    while tol <= 0.14 and (out is None or len(out) < length_s * SR + 2 * xf):
+        near = sorted([c for c in cands if abs(c[2] - f_target) / f_target < tol], key=lambda c: abs(c[2] - f_target))
+        for c in near:
+            if any(abs(c[0] - u) < 0.2 for u in used):
+                continue
+            p = piece(x, t_tr, f_tr, c[0], c[1], f_target)
+            if len(p) < 3 * xf:
+                continue
+            used.append(c[0])
+            p = p / (rms(p) + 1e-9) * 0.2           # cada pedaço com o mesmo volume
+            if out is not None:
+                # alinha a fase: desloca o novo pedaço (até 1 período) para casar com o fim do anterior
+                per = int(SR / f_target) + 1
+                tail = out[-xf:]
+                best, bk = -1e9, 0
+                for k in range(0, min(per, len(p) - xf - 1)):
+                    c = float(np.dot(tail, p[k:k + xf]))
+                    if c > best:
+                        best, bk = c, k
+                p = p[bk:]
+            out = p if out is None else np.concatenate([out[:-xf], out[-xf:] * (1 - ramp) + p[:xf] * ramp, p[xf:]])
+            if len(out) >= length_s * SR + 2 * xf:
+                break
+        tol += 0.02
+    if out is None:
+        return None
+    xf2 = int(0.04 * SR)
+    cyc = int((len(out) - xf2) / SR * f_target)
+    L = int(round(cyc / f_target * SR))
+    if L < int(0.3 * SR):
+        return None
+    loop = out[:L].copy()
+    r2 = np.sin(np.linspace(0, np.pi / 2, xf2)) ** 2
+    loop[:xf2] = out[L:L + xf2] * (1 - r2) + out[:xf2] * r2
+    # nivela o volume do loop pronto de forma circular (também na volta do loop)
+    big = flatten(np.tile(loop, 3), cutoff=12.0)
+    return big[L:2 * L]
+
+
 def write_wav(path, data, loop=True):
+    pk = float(np.max(np.abs(data))) if len(data) else 0.0
+    if pk > 0.85:
+        data = data * (0.85 / pk)
     pcm = (np.clip(data, -1, 1) * 32767).astype("<i2").tobytes()
     fmt = struct.pack("<HHIIHH", 1, 1, SR, SR * 2, 2, 16)
     ch = b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"data" + struct.pack("<I", len(pcm)) + pcm
@@ -169,26 +257,30 @@ def main():
         segs = segments(t, tr)
         dt = t[1] - t[0]
         on_c, off_c = [], []
-        win = 0.32
         for i0, i1, slope in segs:
+            seg_dur = (i1 - i0) * dt
+            win = min(0.4, seg_dur - 0.04)   # matéria-prima curta; o loop final é costurado (longo)
+            if win < 0.28:
+                continue
             n = int(win / dt)
-            for k in range(i0, i1 - n, max(1, n // 3)):
+            for k in range(i0, i1 - n + 1, max(1, n // 4)):
                 fseg = tr[k:k + n]
                 if np.max(np.abs(np.diff(fseg)) / fseg[:-1]) > 0.02:
                     continue
-                c = (t[k], t[k] + win, float(np.mean(fseg)))
+                c = (t[k], t[k] + win, float(np.mean(fseg)), win)
                 (on_c if slope > -0.05 else off_c).append(c)
-        on_p = spread(on_c, N_ON, key=lambda c: c[2])
-        off_p = spread(off_c, N_OFF, key=lambda c: c[2])
+        on_p, off_p = [], []
         out_dir = os.path.join(PROJ, "assets", "audio", key)
         os.makedirs(out_dir, exist_ok=True)
         for old in os.listdir(out_dir):
             os.remove(os.path.join(out_dir, old))
         ons = []
-        for (t0, t1, _) in on_p:
-            lp, fm = dechirp_loop(x, t, tr, t0 - 0.02, t1 + 0.02)
+        fmin, fmax = min(c[2] for c in on_c), max(c[2] for c in on_c)
+        for f_target in np.geomspace(fmin * 1.01, fmax * 0.995, N_ON):
+            lp = stitched_loop(x, t, tr, on_c, f_target)
             if lp is not None:
-                ons.append((lp, fm, t0 + a, t1 + a))
+                srcs = sorted(on_c, key=lambda c: abs(c[2] - f_target))[:3]
+                ons.append((lp, float(f_target), min(c[0] for c in srcs) + a, max(c[1] for c in srcs) + a))
         ons.sort(key=lambda o: o[1])
         f_top = ons[-1][1]
         ref = np.median([rms(o[0]) for o in ons])
@@ -199,10 +291,8 @@ def main():
             write_wav(os.path.join(out_dir, f"on_{i}.wav"), lp * g)
             on_e.append({"file": f"on_{i}.wav", "rpm": TOP_RPM * fm / f_top, "hz": fm, "w": (t0, t1)})
         offs = []
-        for (t0, t1, _) in off_p:
-            lp, fm = dechirp_loop(x, t, tr, t0 - 0.02, t1 + 0.02)
-            if lp is not None:
-                offs.append((lp, fm, t0 + a, t1 + a))
+        for c in off_c[:0]:
+            pass
         # alívio no giro alto também (a redução leva o motor ao alto): versão abafada dos loops acelerando
         for j in sorted(set(np.round(np.linspace(0, len(ons) - 1, 4)).astype(int))):
             lp, fm, t0, t1 = ons[j]

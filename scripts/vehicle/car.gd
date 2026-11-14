@@ -357,8 +357,35 @@ func shift_down() -> void:
 
 
 # ======================================================================= física
+## Ferramenta de teste de som ("dinamômetro"): segura o motor num roteiro de giro fixo, carro parado.
+var dyno_t := -1.0
+
+
+func _dyno(dt: float) -> void:
+	dyno_t += dt
+	var t := dyno_t
+	gear = 8
+	throttle_eff = 1.0
+	in_throttle = 1.0
+	if t < 4.0:
+		rpm = 10500.0
+	elif t < 8.0:
+		rpm = 11200.0
+	elif t < 12.0:
+		rpm = lerpf(8000.0, 12000.0, (t - 8.0) / 4.0)
+	elif t < 14.0:
+		throttle_eff = 0.0
+		in_throttle = 0.0
+		rpm = 11000.0
+	else:
+		rpm = 9000.0
+
+
 func _physics_process(dt: float) -> void:
 	if track == null:
+		return
+	if dyno_t >= 0.0:
+		_dyno(dt)
 		return
 	var xf := global_transform
 	var b := xf.basis

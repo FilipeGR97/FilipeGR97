@@ -86,6 +86,9 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(self, player)
 	_compute_standings()
+	if OS.get_cmdline_user_args().has("dyno"):
+		player.freeze = true
+		player.dyno_t = 0.0
 	if mode == Game.Mode.QUICK_RACE:
 		state = "intro"
 		hud.message("%s — %d voltas" % [tdef["name"], _total_laps], Color.WHITE, 3.0)
@@ -403,6 +406,8 @@ func _physics_process(dt: float) -> void:
 				hud.set_lights(n, true)
 	if state == "intro" or state == "lights":
 		return
+	if OS.get_cmdline_user_args().has("gearlog") and player.gear >= 6 and int(session_time * 120) % 6 == 0:
+		print("[marcha] t=%.2f g=%d rpm=%5.0f v=%3.0f thr_in=%.2f thr=%.2f tc=%.2f stab=%s aero=%s ers=%.0fkW soc=%.2f lim=%s" % [session_time - race_start, player.gear, player.rpm, player.kmh(), player.in_throttle, player.throttle_eff, player.tc_cut, player.stab_active, player.aero_open, player.ers_deploy_kw, player.soc / 1e6, player.in_limiter])
 	if OS.get_cmdline_user_args().has("launchlog") and session_time - race_start < 6.0 and int(session_time * 120) % 12 == 0:
 		print("[largada] t=%.2f rpm=%5.0f marcha=%d thr_in=%.2f thr=%.2f tc=%.2f v=%.0f sx=%.2f shift=%.3f hold=%s" % [session_time - race_start, player.rpm, player.gear, player.in_throttle, player.throttle_eff, player.tc_cut, player.kmh(), player.wheels[2].sx, player.shift_timer, player.launch_hold])
 	for c in cars:

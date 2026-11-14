@@ -4,6 +4,20 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 1.6 — v0.1.6 (7ª/8ª marcha sem "na na na" + seu motor em destaque)
+
+| Problema relatado | Causa encontrada (medida) | Correção |
+|---|---|---|
+| 7ª e 8ª: som "na na na na" | Loops de só 0,33 s; com o giro quase parado (reta longa) a repetição virava pulso (~3x/s). Medido: 37–65% de repetição a cada 0,34 s; no vídeo real 8–17% | Loops de **1–2 s** costurados de vários trechos do vídeo no mesmo giro, com fase alinhada nas emendas e volume nivelado; micro-variação viva de afinação/volume |
+| V6 pulsando | Assobio sintético de turbo "batendo" com os harmônicos gravados | Removido nos motores com gravação (o turbo real já está no som) |
+| Som baixo em 7ª/8ª | Mistura longa entre dois loops (som "oco") + camadas com folga demais | Mistura só na faixa central entre loops; **seu motor +5 a +8 dB** |
+| Quero ouvir o meu motor, os outros abafados | — | Adversários −5 dB e com filtro de abafamento por distância |
+
+Medições: pulsação do motor na 8ª **6–10%** (antes 20–27%; vídeo real 10–14%), picos 0,71, **0 estouros**,
+inclusive com 20 carros. Nova ferramenta de teste `-- dyno` (bancada: motor em giro fixo, carro parado).
+
+---
+
 ## Patch 1.5 — v0.1.5 (som fiel dos motores + ficha dos carros)
 
 **Fonte:** `Sonsmotor/videoplayback.m4a` (gravação de perto: V6, V8, V10, V12 e H16 — o H16 foi ignorado).
