@@ -207,6 +207,40 @@ def stitched_loop(x, t_tr, f_tr, cands, f_target, length_s=1.6):
     return big[L:2 * L]
 
 
+def clean_inharmonic(loop, f_line, label=""):
+    """Remove componentes que NÃO pertencem à série harmônica do motor (sons de fundo do vídeo:
+    outro carro, eco...). Eles desafinam/batem com o motor, principalmente no giro alto."""
+    big = np.tile(loop, 3)
+    f, P = signal.welch(big, SR, nperseg=16384)
+    band = (f > 120) & (f < 4000)
+    fb, Pb = f[band], P[band]
+    peaks, _ = signal.find_peaks(Pb, prominence=np.max(Pb) * 0.02)
+    peaks = peaks[np.argsort(Pb[peaks])[::-1][:24]]
+    pf = fb[peaks]
+    # base harmônica: f_line/k que explica o maior número de picos fortes (k pequeno preferido)
+    best_k, best_score = 1, -1.0
+    for k in range(1, 9):
+        b = f_line / k
+        fit = np.abs(pf / b - np.round(pf / b)) * b / pf < 0.012
+        score = fit.sum() - 0.6 * k
+        if score > best_score:
+            best_k, best_score = k, score
+    b = f_line / best_k
+    removed = []
+    out = big
+    for fr in pf:
+        h = fr / b
+        if abs(h - round(h)) * b / fr >= 0.012 and fr > b * 0.9:
+            q = max(fr / 6.0, 8.0)     # notch estreito (~6 Hz em 40 Hz de largura útil)
+            bb, aa = signal.iirnotch(fr, fr / q, SR)
+            out = signal.filtfilt(bb, aa, out)
+            removed.append(fr)
+    if removed and label:
+        print(f"    {label}: base {b:.1f} Hz, removidos {len(removed)} tons estranhos: " + ", ".join("%.0f" % r for r in sorted(removed)[:8]))
+    n = len(loop)
+    return out[n:2 * n]
+
+
 def write_wav(path, data, loop=True):
     pk = float(np.max(np.abs(data))) if len(data) else 0.0
     if pk > 0.85:
@@ -285,6 +319,7 @@ def main():
         f_top = ons[-1][1]
         ref = np.median([rms(o[0]) for o in ons])
         on_e, off_e = [], []
+        ons = [(clean_inharmonic(lp, fm, f"{key} on {fm:.0f}Hz"), fm, t0, t1) for (lp, fm, t0, t1) in ons]
         for i, (lp, fm, t0, t1) in enumerate(ons):
             # mantém um pouco da variação natural de volume com o giro, sem estourar
             g = 0.22 / rms(lp) * (0.75 + 0.25 * fm / f_top)

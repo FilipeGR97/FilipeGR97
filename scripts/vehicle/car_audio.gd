@@ -206,8 +206,8 @@ func _process(dt: float) -> void:
 		return
 	var ev: float = Game.settings["engine_volume"]
 	_t_live += dt
-	_live_k = 1.0 + 0.0035 * sin(_t_live * 0.83 + _phase) + 0.0022 * sin(_t_live * 2.31 + _phase * 1.7) + 0.0012 * sin(_t_live * 5.7)
-	_vol_jit = 0.6 * sin(_t_live * 1.37 + _phase) + 0.35 * sin(_t_live * 3.9 + _phase * 0.5)
+	_live_k = 1.0 + 0.0012 * sin(_t_live * 0.83 + _phase) + 0.0007 * sin(_t_live * 2.31 + _phase * 1.7)
+	_vol_jit = 0.35 * sin(_t_live * 1.37 + _phase) + 0.2 * sin(_t_live * 3.9 + _phase * 0.5)
 	_arpm = move_toward(_arpm if _arpm > 0.0 else car.rpm, car.rpm, dt * 70000.0)
 	var rpm := _arpm * _live_k
 	var pitch := clampf(rpm / BASE_RPM * _pitch_k, 0.55, 2.3)

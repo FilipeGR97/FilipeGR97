@@ -4,6 +4,17 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 1.7 — v0.1.7 (ajuste fino 7ª/8ª)
+
+- Encontrados **tons estranhos** (sons de fundo do vídeo — outro carro/eco) dentro dos loops de giro alto
+  (V10 9,4–11,3 mil rpm, V8 e V12): não seguiam o motor e desafinavam/batiam justamente na 7ª/8ª.
+  Removidos com filtros estreitos que preservam a série harmônica real de cada motor.
+- Micro-variação de afinação reduzida (podia soar como "vibrato" com o giro estável).
+- Descartado: o limitador do áudio não era o problema (atua em 0,01% das amostras).
+- Medições: pulsação na 7ª/8ª 6–8%, aspereza dentro da faixa do vídeo real, 0 estouros.
+
+---
+
 ## Patch 1.6 — v0.1.6 (7ª/8ª marcha sem "na na na" + seu motor em destaque)
 
 | Problema relatado | Causa encontrada (medida) | Correção |

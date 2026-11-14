@@ -143,7 +143,7 @@ func apply_audio() -> void:
 	for i in AudioServer.get_bus_effect_count(0):
 		if AudioServer.get_bus_effect(0, i) is AudioEffectHardLimiter:
 			has_lim = true
-	if not has_lim:
+	if not has_lim and not OS.get_cmdline_user_args().has("nolimiter"):
 		var lim := AudioEffectHardLimiter.new()
 		lim.ceiling_db = -1.0
 		lim.pre_gain_db = 0.0
