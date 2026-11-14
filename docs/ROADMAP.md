@@ -2,7 +2,7 @@
 
 Ordem pensada para ter sempre algo jogável, priorizando o que mais aproxima de um simulador de F1 real.
 
-## Patch 2 — sensação de pilotagem e corrida
+## Patch 2 — sensação de pilotagem e corrida (✅ entregue: ajuste, danos de asa/pneu, bandeiras, VSC, retrovisores)
 - Ajustes de física a partir do seu feedback (frenagem, sobre/subesterço, zebras, pneus).
 - Volta de apresentação + largada parada com grid organizado.
 - Bandeiras: amarela, azul (retardatários), quadriculada animada.

@@ -111,6 +111,21 @@ var reverse_timer := 0.0
 var brake_in := 0.0
 var gear_rpm := 0.0
 var stab_active := false
+# ajuste do carro (garagem)
+var su_cla := 1.0
+var su_cda := 1.0
+var su_bal := 0.0
+var su_k := 1.0
+var su_arb := 1.0
+var su_diff := 1.0
+# danos
+var dmg_wing := 0.0              # 0..1 asa dianteira
+var puncture := -1               # índice da roda furada (-1 = nenhuma)
+var last_impact := 0.0           # severidade do último impacto (0..1+), lida pela corrida
+var impact_t := 0.0
+var blue_flag := false
+var aero_allowed := true          # direção de prova (VSC desativa)
+var _raw_prev_vel := Vector3.ZERO
 var wrong_way := false
 var auto_braking := false
 var power_mult := 1.0
@@ -182,6 +197,8 @@ func setup(p_team_index: int, p_driver: Dictionary, p_track: Track, player: bool
 	center_of_mass = Vector3.ZERO
 	inertia = Vector3(1150.0, 1050.0, 260.0)
 	continuous_cd = true
+	contact_monitor = true
+	max_contacts_reported = 4
 	can_sleep = false
 	collision_layer = 2
 	collision_mask = 1 | 2
@@ -259,6 +276,31 @@ func set_compound(key: String, fresh: bool) -> void:
 		compounds_used.append(key)
 	if model:
 		model.set_compound(d["color"])
+
+
+## Ajuste do carro: wing_f/wing_r 1..11, springs_f/springs_r 1..11, arb 1..11, diff 50..100, bias 50..65
+func apply_setup(st: Dictionary) -> void:
+	var fw := float(st.get("wing_f", 6))
+	var rw := float(st.get("wing_r", 6))
+	su_cla = 0.82 + 0.015 * (fw + rw)
+	su_cda = 0.88 + 0.01 * (fw + rw)
+	su_bal = 0.008 * (fw - rw)
+	su_arb = 0.76 + 0.04 * float(st.get("arb", 6))
+	su_diff = float(st.get("diff", 75)) / 75.0
+	brake_bias = float(st.get("bias", 58.5)) / 100.0
+	for w in wheels:
+		var wh: Wheel = w
+		var sp := float(st.get("springs_f" if wh.front else "springs_r", 6))
+		var km := 0.76 + 0.04 * sp
+		wh.k = (175000.0 if wh.front else 165000.0) * km
+		wh.c = (6200.0 if wh.front else 6000.0) * sqrt(km)
+
+
+func repair() -> void:
+	dmg_wing = 0.0
+	puncture = -1
+	if model:
+		model.set_damage(0.0)
 
 
 func set_fuel(kg: float) -> void:
@@ -397,6 +439,7 @@ func _physics_process(dt: float) -> void:
 	v_long = vel.dot(fwd)
 	var acc := (vel - _prev_vel) / dt
 	_prev_vel = vel
+	_detect_impact(acc, fwd, upv)
 	_accel_local = _accel_local.lerp(Vector3(acc.dot(rgt), acc.dot(upv), acc.dot(fwd)), 0.08)
 	g_force = _accel_local / 9.81
 
@@ -422,7 +465,7 @@ func _physics_process(dt: float) -> void:
 
 	# --- aerodinâmica ativa
 	# modo reta só em zona de reta, pista seca (direção de prova desativa no molhado) e carro andando reto
-	aero_available = track.aero_zone[t_idx] == 1 and pit_state < Pit.ENTRY and wetness < 0.4
+	aero_available = track.aero_zone[t_idx] == 1 and pit_state < Pit.ENTRY and wetness < 0.4 and aero_allowed
 	var cornering := absf(g_force.x) > 1.0 or absf(steer_angle) > deg_to_rad(1.6) or absf(angular_velocity.dot(upv)) > 0.12
 	if aero_open:
 		if not aero_available or brake_in > 0.05 or cornering:
@@ -501,7 +544,7 @@ func _physics_process(dt: float) -> void:
 	var t_axle := t_crank * r_gear * 0.93
 	var w_l: Wheel = wheels[2]
 	var w_r: Wheel = wheels[3]
-	var lsd := 55.0 + absf(t_axle) * 0.05
+	var lsd := (55.0 + absf(t_axle) * 0.05) * su_diff
 	w_l.drive_t = t_axle * 0.5 - lsd * (w_l.omega - w_r.omega)
 	w_r.drive_t = t_axle * 0.5 + lsd * (w_l.omega - w_r.omega)
 	wheels[0].drive_t = 0.0
@@ -520,8 +563,8 @@ func _physics_process(dt: float) -> void:
 
 	# --- aerodinâmica
 	var vv := v_long * v_long
-	var cla := (CLA_X if aero_open else CLA_Z) * aero_mult * down_mult
-	var cda := (CDA_X if aero_open else CDA_Z) * drag_mult
+	var cla := (CLA_X if aero_open else CLA_Z) * aero_mult * down_mult * su_cla
+	var cda := (CDA_X if aero_open else CDA_Z) * drag_mult * su_cda * (1.0 + 0.06 * dmg_wing)
 	var down := 0.6 * cla * vv
 	var drag := 0.6 * cda * speed * speed
 	if speed > 0.5:
@@ -531,8 +574,9 @@ func _physics_process(dt: float) -> void:
 		if w.grounded:
 			any_ground = true
 	if any_ground:
-		apply_force(-upv * down * AERO_BAL_F, b * Vector3(0, -0.1, FRONT_Z))
-		apply_force(-upv * down * (1.0 - AERO_BAL_F), b * Vector3(0, -0.1, REAR_Z))
+		var bal := AERO_BAL_F + su_bal
+		apply_force(-upv * down * bal * (1.0 - 0.5 * dmg_wing), b * Vector3(0, -0.1, FRONT_Z))
+		apply_force(-upv * down * (1.0 - bal), b * Vector3(0, -0.1, REAR_Z))
 
 	# --- rodas: contato com o solo (consulta analítica da pista — mesma geometria da malha)
 	for w in wheels:
@@ -557,7 +601,7 @@ func _physics_process(dt: float) -> void:
 		if not wf.grounded:
 			continue
 		var other: Wheel = wheels[wi ^ 1]
-		var arb := 70000.0 if wi < 2 else 52000.0
+		var arb := (70000.0 if wi < 2 else 52000.0) * su_arb
 		var cv := (wf.comp - wf.comp_prev) / dt
 		var f := wf.k * wf.comp + wf.c * cv
 		if wf.comp > 0.055:
@@ -602,6 +646,8 @@ func _physics_process(dt: float) -> void:
 		var vy := vp.dot(wsd)
 		# coeficiente de atrito efetivo
 		var mu := MU0 * (1.0 if w.front else REAR_GRIP) * _t_grip * wetf * float(Track.SURFACE_GRIP[w.surface])
+		if wi == puncture:
+			mu *= 0.35
 		var dtp := (w.temp - _t_opt) / _t_win
 		mu *= 1.0 - (0.18 * minf(dtp * dtp, 1.0) if dtp < 0.0 else 0.12 * minf(dtp * dtp, 1.3))
 		mu *= 1.0 - 0.07 * w.wear - maxf(w.wear - 0.72, 0.0) * 1.15
@@ -704,6 +750,77 @@ const ICE_Y := [0.0, 0.33, 0.64, 0.88, 1.0, 0.97, 0.9]
 const TC_TARGETS := [10.0, 0.16, 0.09]
 
 
+## Batidas: soma do impulso de contato com MUROS e OUTROS CARROS (o chão não conta) durante cada choque.
+## Δv do choque = impulso / massa. Toque leve (< ~4 m/s) não quebra; pancada de frente quebra a asa.
+var _crash_j := Vector3.ZERO
+var _crash_quiet := 0.0
+var _crash_age := 0.0
+var _crash_v0 := 0.0
+var _crash_front := false
+var _crash_side := false
+
+
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	var j := Vector3.ZERO
+	var inv := state.transform.affine_inverse()
+	for i in state.get_contact_count():
+		var col := state.get_contact_collider_object(i)
+		if col == null:
+			continue
+		if col is Car or int(col.get_meta("surface", -1)) == Track.Surface.WALL:
+			var ji := state.get_contact_impulse(i)
+			j += ji
+			if _crash_age < 0.15 and ji.length() > 50.0:
+				var lp := inv * state.get_contact_local_position(i)
+				if lp.z < FRONT_Z - 0.25:
+					_crash_front = true          # bico / asa dianteira
+				elif absf(lp.x) > 0.55:
+					_crash_side = true           # roda / lateral
+	if j.length_squared() > 0.0:
+		# só os primeiros 0,15 s do choque contam (encostar e empurrar o muro não é batida)
+		if _crash_age == 0.0:
+			_crash_v0 = state.linear_velocity.length()
+		if _crash_age < 0.15:
+			_crash_j += j
+		_crash_age += state.step
+		_crash_quiet = 0.0
+	else:
+		_crash_quiet += state.step
+		if _crash_quiet > 0.08 and _crash_j.length_squared() > 0.0:
+			var dv := _crash_j / mass
+			if dv.length() > _crash_v0 * 1.1 + 1.0:
+				dv = dv.normalized() * (_crash_v0 * 1.1 + 1.0)   # não perde mais velocidade do que tinha
+			_on_crash(dv)
+			_crash_j = Vector3.ZERO
+			_crash_front = false
+			_crash_side = false
+		if _crash_quiet > 0.08:
+			_crash_age = 0.0
+
+
+func _detect_impact(_acc: Vector3, _fwd: Vector3, _upv: Vector3) -> void:
+	impact_t = maxf(impact_t - 1.0 / 120.0, 0.0)
+
+
+func _on_crash(dv: Vector3) -> void:
+	var fwd := -global_transform.basis.z
+	var mag := dv.length()
+	if OS.get_cmdline_user_args().has("impactlog"):
+		print("[impacto] %s Δv=%.1f m/s frontal=%.2f bico=%s lateral=%s v0=%.0f km/h" % [driver.get("code", "?"), mag, -dv.normalized().dot(fwd), _crash_front, _crash_side, _crash_v0 * 3.6])
+	if mag < 4.0:
+		return
+	var sev := clampf((mag - 4.0) / 14.0, 0.0, 1.5)
+	last_impact = sev
+	var frontal := -dv.normalized().dot(fwd)           # impulso empurrando para trás = bateu de frente
+	if _crash_front or frontal > 0.6:
+		dmg_wing = clampf(dmg_wing + sev * (0.7 + 0.5 * maxf(frontal, 0.0)), 0.0, 1.0)
+	if (_crash_side or not _crash_front) and sev > 0.3 and puncture < 0 and _rng.randf() < 0.5:
+		var side_left := dv.dot(global_transform.basis.x) > 0.0
+		puncture = (0 if side_left else 1) + (2 if _rng.randf() < 0.5 else 0)
+	if model:
+		model.set_damage(dmg_wing)
+
+
 func _ice_curve(r: float) -> float:
 	# fração da potência máxima em função do rpm
 	for i in 6:
@@ -803,11 +920,14 @@ func _update_pit(dt: float) -> void:
 			if speed < 0.6 and absf(u - float(track.box_u[team_index])) < 2.5:
 				pit_state = Pit.SERVICE
 				pit_service_time = 2.1 + _rng.randf() * 0.9 + (0.0 if _rng.randf() > 0.06 else _rng.randf_range(1.5, 4.0))
+				if dmg_wing > 0.1:
+					pit_service_time += 6.5          # troca do bico/asa dianteira
 				pit_timer = pit_service_time
 		Pit.SERVICE:
 			pit_timer -= dt
 			if pit_timer <= 0.0:
 				set_compound(next_compound, true)
+				repair()
 				pit_stops += 1
 				pit_state = Pit.EXIT
 		Pit.EXIT:

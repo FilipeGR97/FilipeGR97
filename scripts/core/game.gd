@@ -19,6 +19,7 @@ var session := {
 	"tyre_wear": 1.0,          # multiplicador de desgaste
 	"fuel_use": 1.0,
 	"mandatory_compounds": true,
+	"setup": {"wing_f": 6, "wing_r": 6, "springs_f": 6, "springs_r": 6, "arb": 6, "diff": 75, "bias": 58.5},
 	"grid_position": -1,       # -1 = aleatória pelo ritmo
 }
 
@@ -40,6 +41,8 @@ var settings := {
 	"camera": 0,
 	"steer_deadzone": 0.06,
 	"steer_linearity": 1.3,
+	"mirrors": true,
+	"setup": {"wing_f": 6, "wing_r": 6, "springs_f": 6, "springs_r": 6, "arb": 6, "diff": 75, "bias": 58.5},
 }
 
 var last_results: Array = []
@@ -55,6 +58,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
 	load_settings()
+	session["setup"] = (settings.get("setup", session["setup"]) as Dictionary).duplicate()
 	apply_audio()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("shots="):

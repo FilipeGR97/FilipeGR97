@@ -54,6 +54,16 @@ var _fuel_per_lap := 1.3
 var _sprays := {}
 var _best_overall := INF
 var _num_down := [false, false, false, false, false, false, false]
+# bandeiras e Virtual Safety Car
+var yellow := [false, false, false]
+var vsc := false
+var vsc_t := 0.0
+var _vsc_count := 0
+var _last_vsc_end := -999.0
+var _vsc_ending := -1.0
+var _vsc_over := 0.0
+var _stop_t := {}
+var _dmg_warned := {}
 
 
 func _ready() -> void:
@@ -85,6 +95,10 @@ func _ready() -> void:
 	hud = HUD.new()
 	add_child(hud)
 	hud.setup(self, player)
+	if bool(Game.settings.get("mirrors", true)) and int(Game.settings["graphics"]) >= 1:
+		var mir := Mirrors.new()
+		add_child(mir)
+		mir.setup(player, camera)
 	_compute_standings()
 	if OS.get_cmdline_user_args().has("dyno"):
 		player.freeze = true
@@ -170,6 +184,7 @@ func _spawn_cars(ses: Dictionary, tdef: Dictionary) -> void:
 				car.controller = adv
 			car.compounds_used.clear()
 			car.set_compound(start_c, true)
+			car.apply_setup(Game.session.get("setup", {}))
 			car.next_compound = "hard" if start_c != "hard" else "medium"
 			if not bool(Tyres.get_data(start_c)["slick"]):
 				car.next_compound = start_c
@@ -416,6 +431,9 @@ func _physics_process(dt: float) -> void:
 	if _slip_t <= 0.0:
 		_slip_t = 0.1
 		_update_slipstream()
+		_update_flags(0.1)
+		if OS.get_cmdline_user_args().has("vsctest"):
+			_dev_vsc_test()
 		_compute_standings()
 		_update_sprays()
 	if is_race() and state == "chequered" and not _results_shown:
@@ -607,6 +625,126 @@ func _compute_standings() -> void:
 			return ba < bb)
 
 
+# ======================================================================= bandeiras / VSC
+func speed_cap(car: Car) -> float:
+	if vsc:
+		return maxf(track.speed_prof[car.t_idx] * 0.6, 22.0)
+	return INF
+
+
+func yellow_at(s: float) -> bool:
+	return yellow[clampi(int(s / (track.length / 3.0)), 0, 2)]
+
+
+func _update_flags(dt: float) -> void:
+	var L := track.length
+	var y := [false, false, false]
+	var trigger := ""
+	for c in cars:
+		var car: Car = c
+		var t: Timing = timing[car]
+		if car.in_pit() or t.finished or not is_racing() or (is_race() and race_time() < 8.0):
+			continue
+		var k := clampi(int(car.s / (L / 3.0)), 0, 2)
+		var stopped := car.speed < 8.0
+		var off := absf(car.lateral) > track.half_width + 1.0
+		if stopped or (off and car.speed < 25.0):
+			y[k] = true
+			_stop_t[car] = float(_stop_t.get(car, 0.0)) + dt
+			if stopped and not off and _stop_t[car] > 6.0:
+				trigger = "carro parado na pista (%s)" % car.driver["code"]
+		else:
+			_stop_t[car] = 0.0
+		if car.last_impact > 0.0:
+			y[k] = true
+			if car.last_impact > 1.1:
+				trigger = "acidente forte (%s)" % car.driver["code"]
+			car.last_impact = 0.0
+		# avisos de dano para o jogador
+		if car == player:
+			if car.dmg_wing > 0.2 and not _dmg_warned.has("wing"):
+				_dmg_warned["wing"] = true
+				hud.message("ASA DIANTEIRA DANIFICADA (%d%%) — BOX recomendado [P]" % int(car.dmg_wing * 100), Color(1.0, 0.5, 0.2), 4.0)
+			if car.puncture >= 0 and not _dmg_warned.has("pun"):
+				_dmg_warned["pun"] = true
+				hud.message("PNEU FURADO — vá para o BOX [P]", Color(1.0, 0.3, 0.2), 4.0)
+			if car.dmg_wing < 0.05 and car.puncture < 0:
+				_dmg_warned.clear()
+	yellow = y
+	# bandeira azul: carro com uma volta a mais chegando por trás (até ~1,5 s)
+	for c in cars:
+		(c as Car).blue_flag = false
+	if is_race() and is_racing():
+		for c in cars:
+			var car: Car = c
+			for o in cars:
+				if o == car:
+					continue
+				var oc: Car = o
+				var d := car.s - oc.s
+				if d < 0.0:
+					d += L
+				if d > 0.0 and d < 90.0 and progress(oc) - progress(car) > L * 0.5:
+					car.blue_flag = true
+					if car == player and int(session_time * 10) % 30 == 0:
+						hud.message("BANDEIRA AZUL — deixe o líder passar", Color(0.3, 0.6, 1.0), 2.0)
+					break
+	# Virtual Safety Car
+	if is_race() and state == "racing" and trigger != "" and not vsc and race_time() > 8.0 and session_time - _last_vsc_end > 60.0:
+		vsc = true
+		_vsc_count += 1
+		vsc_t = 0.0
+		_vsc_ending = -1.0
+		hud.message("VIRTUAL SAFETY CAR — " + trigger, UIKit.YELLOW, 4.0)
+	if vsc:
+		vsc_t += dt
+		var still := false
+		for c in cars:
+			if float(_stop_t.get(c, 0.0)) > 0.0 and absf((c as Car).lateral) < track.half_width + 1.0:
+				still = true
+		if _vsc_ending < 0.0 and vsc_t > 20.0 and not still:
+			_vsc_ending = 3.0
+			hud.message("VSC TERMINANDO — prepare-se", UIKit.GREEN, 3.0)
+		if _vsc_ending >= 0.0:
+			_vsc_ending -= dt
+			if _vsc_ending <= 0.0:
+				vsc = false
+				_last_vsc_end = session_time
+				hud.message("BANDEIRA VERDE", UIKit.GREEN, 2.0)
+		# o jogador precisa respeitar o tempo-alvo
+		var cap := speed_cap(player)
+		if not player.in_pit() and player.speed > cap * 1.08:
+			_vsc_over += dt
+			if _vsc_over > 3.0:
+				_vsc_over = 0.0
+				timing[player].penalty += 5.0
+				hud.message("PENALIDADE +5 s — acima do tempo do VSC", Color(1.0, 0.3, 0.2), 3.0)
+		else:
+			_vsc_over = maxf(_vsc_over - dt * 0.5, 0.0)
+	for c in cars:
+		(c as Car).aero_allowed = not vsc
+
+
+var _dev_victim: Car = null
+func _dev_vsc_test() -> void:
+	# ferramenta de teste: para um carro no meio da pista aos 14 s e solta aos 40 s
+	var rt := race_time()
+	if rt > 14.0 and _dev_victim == null and standings.size() > 6:
+		_dev_victim = standings[6]
+		_dev_victim.freeze = true
+		print("[vsc] carro %s parado na pista em s=%.0f" % [_dev_victim.driver["code"], _dev_victim.s])
+	if rt > 40.0 and _dev_victim and _dev_victim.freeze:
+		_dev_victim.freeze = false
+		_dev_victim.reset_to_track()
+		print("[vsc] carro liberado")
+	if int(rt * 10) % 20 == 0:
+		var slow := 0
+		for c in cars:
+			if (c as Car).speed < speed_cap(c) * 1.1 or not vsc:
+				slow += 1
+		print("[vsc] t=%.0f vsc=%s amarelas=%s vel_jogador=%.0f limite=%.0f carros_ok=%d/%d" % [rt, vsc, str(yellow), player.kmh(), speed_cap(player) * 3.6 if vsc else -1.0, slow, cars.size()])
+
+
 func _update_slipstream() -> void:
 	for c in cars:
 		var car: Car = c
@@ -701,4 +839,10 @@ func _show_results() -> void:
 	for c in final:
 		laps_txt += "%s:%d " % [c.driver["code"], timing[c].laps_done]
 	print("[corrida] voltas completadas: " + laps_txt)
+	var dm := ""
+	for c in final:
+		var cc: Car = c
+		if cc.dmg_wing > 0.05 or cc.puncture >= 0 or cc.pit_stops > 0:
+			dm += "%s(asa %d%% furo %s pits %d) " % [cc.driver["code"], int(cc.dmg_wing * 100), str(cc.puncture >= 0), cc.pit_stops]
+	print("[corrida] danos/pits: " + (dm if dm != "" else "nenhum") + " | VSC acionado: %s" % str(_vsc_count))
 	Game.last_results = rows

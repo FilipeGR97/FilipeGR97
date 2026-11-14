@@ -29,6 +29,9 @@ var _tyre_lbl: Label
 var _msg_lbl: Label
 var _msg_t := 0.0
 var _lights_box: HBoxContainer
+var _flag_pnl: PanelContainer
+var _flag_lbl: Label
+var _dmg_lbl: Label
 var _light_dots: Array = []
 var _pit_lbl: Label
 var _mfd: PanelContainer
@@ -152,6 +155,13 @@ func _build_top() -> void:
 		pnl.add_child(vb)
 		_lights_box.add_child(pnl)
 	_place(_lights_box, 0.5, 0, 0, 110, BOTH, E, false)
+	# painel de bandeiras / VSC (abaixo da volta)
+	_flag_pnl = UIKit.panel(Color(1.0, 0.82, 0.1, 0.95), 6, 12)
+	_flag_lbl = UIKit.label("", 22, Color(0.05, 0.05, 0.05), true, HORIZONTAL_ALIGNMENT_CENTER)
+	_flag_lbl.custom_minimum_size = Vector2(330, 0)
+	_flag_pnl.add_child(_flag_lbl)
+	_place(_flag_pnl, 0.5, 0, 0, 84, BOTH, E)
+	_flag_pnl.visible = false
 	_lights_box.visible = false
 
 
@@ -230,10 +240,12 @@ func _build_dash() -> void:
 	_ot_lbl = UIKit.label("", 16, UIKit.YELLOW, true)
 	_fuel_lbl = UIKit.label("COMB 0.0 kg", 16, Color.WHITE)
 	_bias_lbl = UIKit.label("FREIO 58.5%", 16, Color.WHITE)
+	_dmg_lbl = UIKit.label("", 16, Color(1.0, 0.45, 0.25), true)
 	info.add_child(_aero_lbl)
 	info.add_child(_ot_lbl)
 	info.add_child(_fuel_lbl)
 	info.add_child(_bias_lbl)
+	info.add_child(_dmg_lbl)
 	main.add_child(info)
 	vb.add_child(main)
 	var ers := HBoxContainer.new()
@@ -384,8 +396,33 @@ func _process(dt: float) -> void:
 	_cam_lbl.text = "Câmera: %s  [C ou 1-7]" % CameraRig.NAMES[race.camera.view]
 
 
+func _update_flags_hud() -> void:
+	var txt := ""
+	var col := Color(1.0, 0.82, 0.1, 0.95)
+	if race.vsc:
+		var cap: float = race.speed_cap(player)
+		txt = "VIRTUAL SAFETY CAR  %+d km/h" % int(round((player.speed - cap) * 3.6))
+		col = Color(1.0, 0.82, 0.1, 0.95) if player.speed <= cap * 1.08 else Color(1.0, 0.3, 0.2, 0.95)
+	elif player.blue_flag:
+		txt = "BANDEIRA AZUL"
+		col = Color(0.2, 0.5, 1.0, 0.95)
+	elif race.yellow_at(player.s) or race.yellow_at(fposmod(player.s + 400.0, player.track.length)):
+		txt = "BANDEIRA AMARELA — SETOR %d" % (clampi(int(fposmod(player.s + 200.0, player.track.length) / (player.track.length / 3.0)), 0, 2) + 1)
+	_flag_pnl.visible = txt != "" and _visible_all
+	if txt != "":
+		_flag_lbl.text = txt
+		_flag_pnl.add_theme_stylebox_override("panel", UIKit.panel_style(col, 6, 12))
+
+
 func _update_dash() -> void:
 	var car := player
+	_update_flags_hud()
+	var dmg := ""
+	if car.dmg_wing > 0.05:
+		dmg = "ASA DIANT. %d%%" % int(car.dmg_wing * 100)
+	if car.puncture >= 0:
+		dmg += ("  " if dmg != "" else "") + "PNEU FURADO (%s)" % ["DE", "DD", "TE", "TD"][car.puncture]
+	_dmg_lbl.text = dmg
 	_speed_lbl.text = "%d" % int(round(car.kmh()))
 	_gear_lbl.text = "R" if car.gear < 0 else ("N" if car.gear == 0 else str(car.gear))
 	var frac := (car.rpm - 9500.0) / (Car.LIMIT_RPM - 9500.0)

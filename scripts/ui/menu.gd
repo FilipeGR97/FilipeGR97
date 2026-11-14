@@ -332,10 +332,65 @@ func _show_setup(mode: int) -> void:
 		var grid := [-1, 0, 9, 19]
 		_option("Largada", ["Pelo ritmo", "Pole position", "Meio do grid", "Último"], grid.find(int(s["grid_position"])), func(i): s["grid_position"] = grid[i])
 		_check("Regra dos 2 compostos (corridas de 10+ voltas)", bool(s["mandatory_compounds"]), func(v): s["mandatory_compounds"] = v)
+	_button("AJUSTE DO CARRO", func(): _show_car_setup(mode))
 	var go := _button("▶  IR PARA A PISTA", func(): get_tree().change_scene_to_file("res://scenes/race.tscn"))
 	go.add_theme_color_override("font_color", Color.WHITE)
 	_button("Voltar", _show_main)
 	go.call_deferred("grab_focus")
+
+
+const SETUP_DEFAULT := {"wing_f": 6, "wing_r": 6, "springs_f": 6, "springs_r": 6, "arb": 6, "diff": 75, "bias": 58.5}
+const SETUP_PRESETS := {
+	"Baixa pressão (retas longas)": {"wing_f": 3, "wing_r": 2, "springs_f": 7, "springs_r": 6, "arb": 6, "diff": 70, "bias": 58.0},
+	"Equilibrado": {"wing_f": 6, "wing_r": 6, "springs_f": 6, "springs_r": 6, "arb": 6, "diff": 75, "bias": 58.5},
+	"Alta pressão (curvas)": {"wing_f": 9, "wing_r": 10, "springs_f": 5, "springs_r": 5, "arb": 5, "diff": 80, "bias": 59.0},
+	"Chuva": {"wing_f": 10, "wing_r": 11, "springs_f": 3, "springs_r": 3, "arb": 3, "diff": 60, "bias": 57.0},
+}
+
+
+func _show_car_setup(mode: int) -> void:
+	_screen = "car_setup"
+	_clear()
+	if not Game.session.has("setup"):
+		Game.session["setup"] = (Game.settings.get("setup", SETUP_DEFAULT) as Dictionary).duplicate()
+	var su: Dictionary = Game.session["setup"]
+	for k in SETUP_DEFAULT:
+		if not su.has(k):
+			su[k] = SETUP_DEFAULT[k]
+	_header("AJUSTE DO CARRO")
+	var info := UIKit.label("", 14, UIKit.MUTED)
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size = Vector2(440, 0)
+	var describe := func():
+		var df: float = 0.82 + 0.015 * (float(su["wing_f"]) + float(su["wing_r"]))
+		var dr: float = 0.88 + 0.01 * (float(su["wing_f"]) + float(su["wing_r"]))
+		var bal: float = (0.43 + 0.008 * (float(su["wing_f"]) - float(su["wing_r"]))) * 100.0
+		info.text = "Pressão aerodinâmica %d%% · arrasto %d%% · equilíbrio %.0f%% na frente
+Mais asa = mais aderência nas curvas, menos velocidade na reta. Frente mais forte = carro mais 'solto' na traseira." % [int(df * 100), int(dr * 100), bal]
+	var preset_items := SETUP_PRESETS.keys()
+	_option("Pré-ajuste", ["(personalizado)"] + preset_items, 0, func(i):
+		if i > 0:
+			var pr: Dictionary = SETUP_PRESETS[preset_items[i - 1]]
+			for k in pr:
+				su[k] = pr[k]
+			_show_car_setup(mode))
+	_slider("Asa dianteira", 1, 11, 1, float(su["wing_f"]), func(x):
+		su["wing_f"] = int(x)
+		describe.call())
+	_slider("Asa traseira", 1, 11, 1, float(su["wing_r"]), func(x):
+		su["wing_r"] = int(x)
+		describe.call())
+	_slider("Mola dianteira", 1, 11, 1, float(su["springs_f"]), func(x): su["springs_f"] = int(x))
+	_slider("Mola traseira", 1, 11, 1, float(su["springs_r"]), func(x): su["springs_r"] = int(x))
+	_slider("Barras estabiliz.", 1, 11, 1, float(su["arb"]), func(x): su["arb"] = int(x))
+	_slider("Diferencial (%)", 50, 100, 5, float(su["diff"]), func(x): su["diff"] = int(x))
+	_slider("Freio na frente (%)", 52, 64, 0.5, float(su["bias"]), func(x): su["bias"] = x, "%.1f")
+	_panel.add_child(info)
+	describe.call()
+	_button("Salvar e voltar", func():
+		Game.settings["setup"] = su.duplicate()
+		Game.save_settings()
+		_show_setup(mode))
 
 
 func _show_teams() -> void:
@@ -381,6 +436,7 @@ func _show_options() -> void:
 	_panel.add_child(UIKit.label("GRÁFICOS", 16, UIKit.ACCENT, true))
 	_option("Qualidade", Weather.PRESETS.map(func(p): return p["name"]), int(st["graphics"]), func(i): st["graphics"] = i)
 	_slider("Campo de visão", 50, 100, 1, float(st["fov"]), func(x): st["fov"] = x)
+	_check("Retrovisores funcionando (custa alguns FPS)", bool(st.get("mirrors", true)), func(v): st["mirrors"] = v)
 	_panel.add_child(UIKit.label("ÁUDIO", 16, UIKit.ACCENT, true))
 	_slider("Volume geral", 0, 100, 1, float(st["master_volume"]) * 100.0, func(x):
 		st["master_volume"] = x / 100.0

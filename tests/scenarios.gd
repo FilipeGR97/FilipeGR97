@@ -315,10 +315,11 @@ func _finish() -> void:
 	var ok := fails.is_empty()
 	if cur.get("noassist", false) and spins > 20:
 		print("   (sem assistências o carro roda %d ticks no teclado — esperado, como num F1 real)" % spins)
+	var dmg_txt := " asa=%d%% furo=%s" % [int(car.dmg_wing * 100), str(car.puncture >= 0)]
 	var line := "%-20s %s  recuperou=%s  avançou=%4.0fm  rodadas=%d  pneu_máx=%3.0f°C  pits=%d" % [name, "OK  " if ok else "FALHA", ("%.1fs" % recovered_at) if recovered_at >= 0.0 else "não", progress, spins, max_temp, car.pit_stops]
 	if not ok:
 		line += "\n      -> " + "; ".join(fails)
-	print(line)
+	print(line + dmg_txt)
 	results.append(ok)
 	cur = {}
 	call_deferred("_next")

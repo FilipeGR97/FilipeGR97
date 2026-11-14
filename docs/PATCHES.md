@@ -4,6 +4,41 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 2 — v0.2.0 (corrida de verdade: ajuste, danos, bandeiras, VSC, retrovisores)
+
+### Novidades
+- **Ajuste do carro** (Corrida/Treino → *Ajuste do carro*): asa dianteira e traseira, molas, barras estabilizadoras,
+  diferencial e balanço de freio, com pré-ajustes (*Baixa pressão*, *Equilibrado*, *Alta pressão*, *Chuva*).
+  Mostra o efeito na pressão aerodinâmica, no arrasto e no equilíbrio. Fica salvo.
+- **Danos**: batidas fortes de frente quebram a **asa dianteira** (perde pressão na frente, o carro sai de frente
+  e fica mais lento); impactos laterais fortes podem **furar um pneu**. O visual da asa entorta/solta.
+  O **pit stop conserta** (+6,5 s para trocar o bico). A IA também quebra e vai ao box.
+- **Bandeiras**: **amarela** no setor com carro parado/batido (a IA alivia); **azul** para retardatário
+  quando o líder chega (a IA abre caminho; você recebe o aviso).
+- **Virtual Safety Car**: entra com carro parado na pista ou acidente forte. Todos andam num ritmo limitado;
+  o HUD mostra sua diferença para o limite (verde/vermelho). Acima do limite por 3 s = **+5 s**.
+  Asa móvel desligada durante o VSC.
+- **Retrovisores funcionando** nas câmeras de 1ª pessoa (opção para desligar em Opções → Gráficos).
+
+- **Som com qualidade de estúdio**: os loops passam por limpeza espectral (ruído/ambiente/artefatos de
+  compressão do vídeo −3 a −7 dB entre os harmônicos), equalização (corpo nos graves, presença), excitador que
+  reconstrói os agudos cortados pela compressão (6–16 kHz) e **estéreo** natural (correlação 0,8) no seu motor.
+  Pulsação mantida em 7–11% (motor real: 10–14%), 0 estouros.
+- Detecção de batida por **impulso de contato** real (muros e carros; chão não conta) e ponto do choque
+  (bico → asa; lateral/roda → furo). VSC só com carro parado > 6 s ou batida muito forte, com intervalo de 60 s.
+
+### O que testar
+- Ajuste do carro: compare *Baixa pressão* e *Alta pressão* (velocidade final × curvas).
+- Bata de frente num muro: aviso de dano, carro saindo de frente; vá ao box e veja o conserto.
+- Pare o carro no meio da pista numa corrida: bandeira amarela e VSC.
+- Seja retardatário (dificuldade alta, corrida longa): bandeira azul.
+- Olhe os retrovisores na câmera atrás do piloto.
+
+### Deixado para o Patch 2.1+
+Safety Car com carro físico e fila, volta de apresentação, danos de suspensão/assoalho, telemetria.
+
+---
+
 ## Patch 1.7 — v0.1.7 (ajuste fino 7ª/8ª)
 
 - Encontrados **tons estranhos** (sons de fundo do vídeo — outro carro/eco) dentro dos loops de giro alto

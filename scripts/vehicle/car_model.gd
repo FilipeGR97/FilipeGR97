@@ -33,6 +33,7 @@ var _led_mats: Array = []
 var _aero_t := 0.0
 var _rain_t := 0.0
 var _rain_on := false
+var _damage := 0.0
 
 
 # ======================================================================= geometria utilitária
@@ -965,6 +966,23 @@ func set_aero(open: bool) -> void:
 		_flap_r.rotation.x = -_aero_t * 0.45
 	for f in _flap_f:
 		(f as Node3D).rotation.x = -_aero_t * 0.3
+
+
+## Dano na asa dianteira: flaps entortam (>0,25) e se soltam (>0,6).
+func set_damage(d: float) -> void:
+	_damage = d
+	for i in _flap_f.size():
+		var f: Node3D = _flap_f[i]
+		if not f.has_meta("base"):
+			f.set_meta("base", f.position)
+		var base: Vector3 = f.get_meta("base")
+		f.visible = d < 0.6 or (i == 0 and d < 0.85)
+		if d > 0.25:
+			f.rotation.z = (0.35 if i == 0 else -0.35) * clampf(d, 0.0, 1.0)
+			f.position = base + Vector3(0, -0.04 * d, 0)
+		else:
+			f.rotation.z = 0.0
+			f.position = base
 
 
 func set_compound(c: Color) -> void:

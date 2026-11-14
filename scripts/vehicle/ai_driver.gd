@@ -95,6 +95,14 @@ func drive(car: Car, dt: float) -> void:
 	_mistake = maxf(_mistake - dt * 2.0, 0.0)
 	# distância de segurança para o carro da frente
 	v_target = minf(v_target, cap)
+	# bandeiras: VSC (limite de ritmo), amarela (cautela), azul (deixa o líder passar)
+	if race and race.has_method("speed_cap"):
+		v_target = minf(v_target, race.speed_cap(car))
+		if race.yellow_at(car.s):
+			v_target *= 0.93
+		if car.blue_flag:
+			v_target *= 0.95
+			_offset_target = -signf(tr.line_off[car.t_idx]) * 2.5
 	var gap_car := _gap_car
 	var err := v_target - spd
 	if err > 0.0:
@@ -224,7 +232,11 @@ func _strategy(car: Car) -> void:
 	var best_tyre := Tyres.best_for(car.wetness)
 	var tyre_ok := bool(Tyres.get_data(car.compound)["slick"]) == (best_tyre == "medium") or best_tyre == car.compound
 	var must := false
-	if not tyre_ok and laps_left >= 1:
+	if (car.dmg_wing > 0.45 or car.puncture >= 0) and laps_left >= 1:
+		must = true
+		if car.next_compound == "":
+			car.next_compound = car.compound
+	elif not tyre_ok and laps_left >= 1:
 		must = true
 		car.next_compound = best_tyre if best_tyre != "medium" else "medium"
 	elif car.max_wear() > 0.78 and laps_left >= 2:
@@ -236,7 +248,7 @@ func _strategy(car: Car) -> void:
 	elif race.mandatory_compounds() and car.compounds_used.size() < 2 and bool(Tyres.get_data(car.compound)["slick"]) and laps_left == 1:
 		must = true
 		car.next_compound = "soft" if car.compound != "soft" else "medium"
-	if must and race.car_progress_in_lap(car) > 0.5:
+	if must and (race.car_progress_in_lap(car) > 0.5 or car.dmg_wing > 0.45 or car.puncture >= 0):
 		car.request_pit(true)
 		planned_stop_lap = -1
 

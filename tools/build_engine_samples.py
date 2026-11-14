@@ -241,15 +241,87 @@ def clean_inharmonic(loop, f_line, label=""):
     return out[n:2 * n]
 
 
+# ---------------------------------------------------------------------------------------------------
+# Qualidade de estúdio: o vídeo é áudio comprimido (AAC), mono, com ruído/ambiente e agudos cortados.
+# Cada loop é periódico, então tudo é feito no domínio da frequência do próprio loop (emenda perfeita).
+# ---------------------------------------------------------------------------------------------------
+def enhance(loop):
+    n = len(loop)
+    X = np.fft.rfft(loop)
+    f = np.fft.rfftfreq(n, 1.0 / SR)
+    mag = np.abs(X)
+    # 1) limpeza: mantém os harmônicos (picos) e reduz o "chiado" entre eles (ruído, ambiente, artefatos)
+    df = f[1] - f[0]
+    w = max(3, int(25.0 / df))                    # mediana local em ~±25 Hz
+    from scipy.ndimage import median_filter, uniform_filter1d
+    med = median_filter(mag, size=2 * w + 1, mode="nearest")
+    ratio = mag / (med + 1e-12)
+    gate = np.clip((ratio - 1.0) / 2.5, 0.0, 1.0)   # 0 no ruído de fundo, 1 nos harmônicos
+    gate = uniform_filter1d(gate, 3)
+    g = 0.32 + 0.68 * gate                          # ruído cai ~10 dB, harmônicos intactos
+    # 2) equalização: corpo nos graves, presença, sem "telefone"
+    eq = np.ones_like(f)
+    eq *= 1.0 + 0.45 / (1.0 + (f / 160.0) ** 4)                     # +3 dB abaixo de ~160 Hz
+    eq *= 1.0 + 0.30 * np.exp(-((np.log2(np.maximum(f, 1) / 3200.0)) ** 2) / 0.5)   # +2,3 dB ~3 kHz
+    eq *= 1.0 / (1.0 + (40.0 / np.maximum(f, 1.0)) ** 4)             # corta ronco < 40 Hz
+    Y = X * g * eq
+    y = np.fft.irfft(Y, n)
+    # 3) excitador: recria os agudos que a compressão cortou (harmônicos de 6-15 kHz) — circular
+    big = np.tile(y, 3)
+    hp = signal.sosfiltfilt(signal.butter(2, 1800, "hp", fs=SR, output="sos"), big)
+    k = 1.0 / (3.0 * float(np.sqrt(np.mean(hp ** 2))) + 1e-9)
+    ex = np.tanh(hp * k) / k                       # saturação gera harmônicos acima de 4-6 kHz
+    ex = signal.sosfiltfilt(signal.butter(4, 5500, "hp", fs=SR, output="sos"), ex)
+    ex = signal.sosfiltfilt(signal.butter(2, 16000, "lp", fs=SR, output="sos"), ex)[n:2 * n]
+    # dosagem: leva a energia de 6-16 kHz a ~2,5% do total (brilho de gravação de perto moderna)
+    def hf_energy(z):
+        Z = np.abs(np.fft.rfft(z)) ** 2
+        fz = np.fft.rfftfreq(len(z), 1.0 / SR)
+        return Z[(fz > 6000) & (fz < 16000)].sum(), Z[(fz > 100) & (fz < 16000)].sum()
+    cur, tot = hf_energy(y)
+    exe, _ = hf_energy(ex)
+    want = 0.025 * tot
+    gain = float(np.sqrt(max(want - cur, 0.0) / (exe + 1e-12)))
+    return y + min(gain, 6.0) * ex
+
+
+def finish(y):
+    """Depois da limpeza/excitador: nivela de novo o volume (circular) — a limpeza deixa harmônicos
+    vizinhos 'batendo' e isso voltava a pulsar."""
+    n = len(y)
+    return flatten(np.tile(y, 3), cutoff=12.0)[n:2 * n]
+
+
+def stereo(y):
+    """Largura estéreo natural: canal direito levemente descorrelacionado (passa-tudo) + 0,35 ms."""
+    n = len(y)
+    big = np.tile(y, 3)
+    r = big.copy()
+    for fc in (310.0, 1250.0, 4100.0):
+        c = np.tan(np.pi * fc / SR)
+        a = (c - 1) / (c + 1)
+        r = signal.lfilter([a, 1.0], [1.0, a], r)
+    d = int(0.00035 * SR)
+    r = np.roll(r, d)
+    # largura moderada: correlação ~0,8 (natural, sem soar "oco")
+    d = r - big * (np.dot(r, big) / (np.dot(big, big) + 1e-12))     # parte descorrelacionada
+    d *= np.sqrt(np.dot(big, big) / (np.dot(d, d) + 1e-12))
+    a = 0.33
+    left = big + a * d
+    right = big - a * d
+    return np.stack([left[n:2 * n], right[n:2 * n]], axis=1)
+
+
 def write_wav(path, data, loop=True):
     pk = float(np.max(np.abs(data))) if len(data) else 0.0
     if pk > 0.85:
         data = data * (0.85 / pk)
+    ch_n = 1 if data.ndim == 1 else data.shape[1]
     pcm = (np.clip(data, -1, 1) * 32767).astype("<i2").tobytes()
-    fmt = struct.pack("<HHIIHH", 1, 1, SR, SR * 2, 2, 16)
+    fmt = struct.pack("<HHIIHH", 1, ch_n, SR, SR * 2 * ch_n, 2 * ch_n, 16)
     ch = b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"data" + struct.pack("<I", len(pcm)) + pcm
     if loop:
-        smpl = struct.pack("<IIIIIIIII", 0, 0, int(1e9 / SR), 60, 0, 0, 0, 1, 0) + struct.pack("<IIIIII", 0, 0, 0, len(data) - 1, 0, 0)
+        smpl = struct.pack("<IIIIIIIII", 0, 0, int(1e9 / SR), 60, 0, 0, 0, 1, 0) + struct.pack("<IIIIII", 0, 0, 0, data.shape[0] - 1, 0, 0)
         ch += b"smpl" + struct.pack("<I", len(smpl)) + smpl
     with open(path, "wb") as fh:
         fh.write(b"RIFF" + struct.pack("<I", 4 + len(ch)) + b"WAVE" + ch)
@@ -323,7 +395,7 @@ def main():
         for i, (lp, fm, t0, t1) in enumerate(ons):
             # mantém um pouco da variação natural de volume com o giro, sem estourar
             g = 0.22 / rms(lp) * (0.75 + 0.25 * fm / f_top)
-            write_wav(os.path.join(out_dir, f"on_{i}.wav"), lp * g)
+            write_wav(os.path.join(out_dir, f"on_{i}.wav"), stereo(finish(enhance(lp * g))))
             on_e.append({"file": f"on_{i}.wav", "rpm": TOP_RPM * fm / f_top, "hz": fm, "w": (t0, t1)})
         offs = []
         for c in off_c[:0]:
@@ -332,11 +404,12 @@ def main():
         for j in sorted(set(np.round(np.linspace(0, len(ons) - 1, 4)).astype(int))):
             lp, fm, t0, t1 = ons[j]
             if all(abs(fm - o[1]) / fm > 0.05 for o in offs):
-                soft = signal.sosfiltfilt(signal.butter(2, 1600, "lp", fs=SR, output="sos"), lp)
+                nn = len(lp)
+                soft = signal.sosfiltfilt(signal.butter(2, 1600, "lp", fs=SR, output="sos"), np.tile(lp, 3))[nn:2 * nn]
                 offs.append((soft, fm, t0, t1))
         offs.sort(key=lambda o: o[1])
         for i, (lp, fm, t0, t1) in enumerate(offs):
-            write_wav(os.path.join(out_dir, f"off_{i}.wav"), lp * (0.17 / rms(lp)))
+            write_wav(os.path.join(out_dir, f"off_{i}.wav"), stereo(finish(enhance(lp * (0.17 / rms(lp))))))
             off_e.append({"file": f"off_{i}.wav", "rpm": TOP_RPM * fm / f_top, "hz": fm, "w": (t0, t1)})
         table[key] = {"on": on_e, "off": off_e}
         ax = axes[row]
