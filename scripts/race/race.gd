@@ -432,6 +432,8 @@ func _physics_process(dt: float) -> void:
 		_slip_t = 0.1
 		_update_slipstream()
 		_update_flags(0.1)
+		if OS.get_cmdline_user_args().has("pitqueue"):
+			_dev_pit_queue()
 		if OS.get_cmdline_user_args().has("vsctest"):
 			_dev_vsc_test()
 		_compute_standings()
@@ -632,6 +634,20 @@ func speed_cap(car: Car) -> float:
 	return INF
 
 
+## Vaga do box ocupada pelo companheiro de equipe (atendimento ou parando à frente)?
+func box_busy(car: Car) -> bool:
+	var u := track.pit_u(car.s)
+	for c in cars:
+		var o: Car = c
+		if o == car or o.team_index != car.team_index:
+			continue
+		if o.pit_state == Car.Pit.SERVICE:
+			return true
+		if o.pit_state == Car.Pit.STOPPING and track.pit_u(o.s) > u and not o.pit_wait:
+			return true
+	return false
+
+
 func yellow_at(s: float) -> bool:
 	return yellow[clampi(int(s / (track.length / 3.0)), 0, 2)]
 
@@ -723,6 +739,36 @@ func _update_flags(dt: float) -> void:
 			_vsc_over = maxf(_vsc_over - dt * 0.5, 0.0)
 	for c in cars:
 		(c as Car).aero_allowed = not vsc
+
+
+var _dev_mate: Car = null
+func _dev_pit_queue() -> void:
+	# ferramenta de teste: jogador com pneu furado e companheiro de equipe pedem box na mesma volta
+	var rt := race_time()
+	if _dev_mate == null:
+		for c in cars:
+			if c != player and (c as Car).team_index == player.team_index:
+				_dev_mate = c
+	if _dev_mate == null:
+		return
+	var together := OS.get_cmdline_user_args().has("juntos")
+	if rt > 3.0 and player.pit_stops == 0 and player.pit_state == Car.Pit.NONE and player.puncture < 0 and (not together or (track.pit_u(player.s) > track.length - 700.0 and track.pit_u(player.s) < track.length - 400.0)):
+		if together:
+			# coloca o companheiro colado atrás do jogador
+			var i := track.idx(player.t_idx - 8)
+			_dev_mate.place(track.frame(i, player.lateral, 0.0))
+			_dev_mate.linear_velocity = player.linear_velocity
+		else:
+			player.puncture = 2
+		player.request_pit(true)
+		_dev_mate.request_pit(true)
+		print("[box] pedidos feitos: jogador (furo) e %s" % _dev_mate.driver["code"])
+	for c in [player, _dev_mate]:
+		var car: Car = c
+		if car == player and int(session_time * 10) % 20 == 0 and not car.in_pit():
+			print("[box] JOGADOR fora do box: estado=%d s=%.0f u=%.0f v=%.0f lat=%.1f furo=%d" % [car.pit_state, car.s, track.pit_u(car.s), car.kmh(), car.lateral, car.puncture])
+		if car.in_pit() and int(session_time * 10) % 5 == 0:
+			print("[box] %s estado=%d u=%.0f box=%.0f v=%.0f v_long=%.1f marcha=%d espera=%s pits=%d" % [car.driver["code"], car.pit_state, track.pit_u(car.s), float(track.box_u[car.team_index]), car.kmh(), car.v_long * 3.6, car.gear, car.pit_wait, car.pit_stops])
 
 
 var _dev_victim: Car = null

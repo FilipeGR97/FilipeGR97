@@ -4,6 +4,21 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 2.1 — v0.2.1 (correções do box)
+
+| Problema relatado | Causa | Correção |
+|---|---|---|
+| Depois do pneu furado, no box o carro deu ré até a entrada do box | Durante o atendimento o piloto automático segura o freio; com o carro parado, o câmbio automático engatava a **ré** (regra do "segure S") e o freio virava acelerador de ré | Ré automática só para o jogador **fora** do box; no atendimento o carro fica em **ponto morto** e travado; sai em 1ª |
+| Carro "estacionado atravessado" na pit lane, batida e dano na asa | Dentro do box não existia recuperação: um carro atingido ali ficava parado para sempre | Recuperação dentro do box (recoloca alinhado após 3 s); o piloto automático **espera atrás** de carro parado na faixa em vez de bater |
+| (encontrado) Companheiro de equipe usando a mesma vaga | Dois carros da equipe iam para a vaga ao mesmo tempo | **Fila no box**: o segundo carro espera 9 m atrás até a vaga liberar (como na F1 real) |
+| (encontrado) Atendimento não começava se o carro parasse um pouco depois da marca | Tolerância de 2,5 m | A equipe atende mesmo com o carro um pouco além da marca |
+| (encontrado) IA com pneu furado andava no ritmo normal e rodava | — | IA com furo anda devagar até o box; com asa quebrada alivia conforme o dano |
+
+Testes: jogador com pneu furado entrando no box (para na marca, atende em ponto morto, sai para a frente);
+dois carros da mesma equipe chegando juntos (fila funcionando, nenhum contato); 14/14 cenários nas duas configurações.
+
+---
+
 ## Patch 2 — v0.2.0 (corrida de verdade: ajuste, danos, bandeiras, VSC, retrovisores)
 
 ### Novidades

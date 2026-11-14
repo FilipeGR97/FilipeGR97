@@ -23,6 +23,7 @@ var _gap_car: Car = null
 var _strat_t := 0.0
 var pace_mod := 1.0          # variação de ritmo volta a volta (consistência do piloto)
 var _lap_seen := -1
+var _pit_stuck := 0.0
 
 
 func _init(p_skill := 0.95) -> void:
@@ -95,6 +96,10 @@ func drive(car: Car, dt: float) -> void:
 	_mistake = maxf(_mistake - dt * 2.0, 0.0)
 	# distância de segurança para o carro da frente
 	v_target = minf(v_target, cap)
+	# dano: pneu furado = devagar até o box; asa quebrada = alivia conforme o dano
+	if car.puncture >= 0:
+		v_target *= 0.55
+	v_target *= 1.0 - 0.15 * car.dmg_wing
 	# bandeiras: VSC (limite de ritmo), amarela (cautela), azul (deixa o líder passar)
 	if race and race.has_method("speed_cap"):
 		v_target = minf(v_target, race.speed_cap(car))
@@ -262,6 +267,11 @@ func drive_pit(car: Car, dt: float) -> void:
 	var ut := u + look
 	var lat := tr.pit_path_lateral(ut)
 	var target_speed := tr.pit_speed - 0.6
+	# fila no box: se o companheiro está na vaga, para atrás dele e espera
+	car.pit_wait = false
+	if car.pit_state == Car.Pit.STOPPING and race and race.has_method("box_busy") and race.box_busy(car):
+		car.pit_wait = true
+		box_u -= 9.0
 	if car.pit_state == Car.Pit.STOPPING or car.pit_state == Car.Pit.SERVICE:
 		var k := clampf(1.0 - (box_u - ut) / 26.0, 0.0, 1.0)
 		lat = lerpf(lat, tr.pit_box_off * tr.pit_side, smoothstep(0.0, 1.0, k))
@@ -276,6 +286,24 @@ func drive_pit(car: Car, dt: float) -> void:
 			target_speed = 60.0
 	elif u < Track.PIT_TAPER * 0.7:
 		target_speed = maxf(tr.pit_speed, 45.0 - u * 0.15)
+	# carro parado/atravessado à frente na mesma faixa do box: espera atrás (sem bater)
+	for o in cars:
+		var oc: Car = o
+		if oc == car or oc.speed > 3.0:
+			continue
+		var d := tr.pit_u(oc.s) - u
+		if d > 0.0 and d < 16.0 and absf(oc.lateral - car.lateral) < 2.4 and oc.pit_state != Car.Pit.SERVICE:
+			target_speed = minf(target_speed, maxf(d - 8.0, 0.0) * 0.8)
+	# preso dentro do box (rodou/bateu, atravessado): recoloca alinhado na faixa
+	if car.speed < 1.0 and car.pit_state != Car.Pit.SERVICE and not car.pit_wait and target_speed > 1.0:
+		_pit_stuck += dt
+		if _pit_stuck > 3.0:
+			_pit_stuck = 0.0
+			var i := tr.idx_at_s(car.s)
+			car.place(tr.frame(i, tr.pit_path_lateral(u) if car.pit_state != Car.Pit.STOPPING else tr.pit_box_off * tr.pit_side, 0.0))
+			car.gear = 1
+	else:
+		_pit_stuck = 0.0
 	var target := tr.point_s(car.s + look, lat)
 	var b := car.global_transform.basis
 	var to := target - car.global_position

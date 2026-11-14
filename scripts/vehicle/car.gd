@@ -754,6 +754,7 @@ const TC_TARGETS := [10.0, 0.16, 0.09]
 ## Δv do choque = impulso / massa. Toque leve (< ~4 m/s) não quebra; pancada de frente quebra a asa.
 var _crash_j := Vector3.ZERO
 var _crash_quiet := 0.0
+var pit_wait := false            # esperando o companheiro sair do box
 var _crash_age := 0.0
 var _crash_v0 := 0.0
 var _crash_front := false
@@ -877,8 +878,8 @@ func _auto_gearbox(dt: float) -> void:
 		return
 	if not bool(assists["auto_gear"]):
 		return
-	# ré automática: parado e segurando o freio
-	if gear >= 1 and speed < 1.0 and in_brake > 0.5 and in_throttle < 0.05:
+	# ré automática: parado e segurando o freio (só o jogador, nunca dentro do box / no atendimento)
+	if is_player and not in_pit() and gear >= 1 and speed < 1.0 and in_brake > 0.5 and in_throttle < 0.05:
 		reverse_timer += dt
 		if reverse_timer > 0.35:
 			gear = -1
@@ -917,17 +918,21 @@ func _update_pit(dt: float) -> void:
 			if u >= float(track.box_u[team_index]) - 30.0 and u < track.pit_len:
 				pit_state = Pit.STOPPING
 		Pit.STOPPING:
-			if speed < 0.6 and absf(u - float(track.box_u[team_index])) < 2.5:
+			var bu := float(track.box_u[team_index])
+			if speed < 0.6 and not pit_wait and u > bu - 2.5 and u < bu + 12.0:
 				pit_state = Pit.SERVICE
 				pit_service_time = 2.1 + _rng.randf() * 0.9 + (0.0 if _rng.randf() > 0.06 else _rng.randf_range(1.5, 4.0))
 				if dmg_wing > 0.1:
 					pit_service_time += 6.5          # troca do bico/asa dianteira
 				pit_timer = pit_service_time
 		Pit.SERVICE:
+			gear = 0                         # ponto morto durante o atendimento (nada de ré/arrancar)
+			linear_velocity = linear_velocity * 0.5
 			pit_timer -= dt
 			if pit_timer <= 0.0:
 				set_compound(next_compound, true)
 				repair()
+				gear = 1
 				pit_stops += 1
 				pit_state = Pit.EXIT
 		Pit.EXIT:
