@@ -42,7 +42,9 @@ Câmeras: atrás do piloto (padrão), olhos do piloto, T-Cam, bico, perseguiçã
 - **Clima**: seco, chuva leve e chuva forte (pista molhada reflete, spray dos carros, menos aderência).
 - **Corrida**: semáforo de largada, cronometragem por setores, delta para a melhor volta, intervalos, limites de pista com penalidade,
   bandeira quadriculada e tabela de resultado.
-- **IA**: 19 adversários com traçado ideal calculado, perfil de velocidade, ultrapassagem, estratégia de pit e erros ocasionais.
+- **Circuitos**: Autódromo Serra Azul (fictício) e **Circuito de Mônaco** (circuito de rua: guard-rail, prédios, porto, túnel).
+- **IA**: 19 adversários que **aprendem cada trecho da pista** (pré-treinados em `data/ai/`, ajustam durante a corrida),
+  defendem por dentro, atacam freando mais tarde, estratégia de pit e erros ocasionais.
 - **Câmeras**: atrás do piloto (padrão, halo visto por trás), olhos do piloto, T-Cam, bico, perseguição perto/longe, TV.
 - **Som por motor gravado**: V10, V6 turbo híbrido, V8 e V12 (loops reais por faixa de giro, acelerando/aliviando, troca de marcha real), afinação por equipe, assobio do turbo/MGU-K, pneus, vento e zebras. Gerados por `tools/build_engine_samples.py`.
 - Modos: **Corrida rápida**, **Contra o relógio**, **Treino livre**. Menu com showroom 3D e opções (gráficos, áudio, assistências).
@@ -77,6 +79,13 @@ godot --headless --path . --fixed-fps 120 res://tests/scenarios.tscn      # 14 c
 godot --headless --path . --fixed-fps 120 res://tests/player_test.tscn    # piloto de teclado virtual
 godot --headless --path . --fixed-fps 120 res://tests/gravel_test.tscn    # sair da brita
 ```
+
+## Treinar a IA numa pista nova
+
+```
+Godot_console --headless --fixed-fps 120 -s res://tests/ai_lab.gd -- track=<chave> skill=1.0 laps=26 learn start=1.08
+```
+Salva `data/ai/<chave>.json` com o conhecimento da melhor volta limpa.
 
 ## Teste automático da física (IA)
 

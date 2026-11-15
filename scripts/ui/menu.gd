@@ -316,8 +316,8 @@ func _show_setup(mode: int) -> void:
 	_team_picker()
 	_option("Circuito", Tracks.keys().map(func(k): return Tracks.get_data(k)["name"]), Tracks.keys().find(s["track"]), func(i): s["track"] = Tracks.keys()[i])
 	if mode == Game.Mode.QUICK_RACE:
-		var laps := [3, 5, 8, 10, 15, 20, 30, 61]
-		_option("Voltas", laps.map(func(x): return ("%d (100%%)" % x) if x == 61 else str(x)), laps.find(int(s["laps"])), func(i): s["laps"] = laps[i])
+		var laps := [3, 5, 8, 10, 15, 20, 30, -1]
+		_option("Voltas", laps.map(func(x): return "Distância total" if x < 0 else str(x)), laps.find(int(s["laps"])), func(i): s["laps"] = laps[i])
 	if mode != Game.Mode.TIME_TRIAL:
 		_slider("Adversários", 0, 19, 1, float(s["ai_count"]), func(x): s["ai_count"] = int(x))
 		_slider("Dificuldade IA", 40, 100, 1, float(s["difficulty"]), func(x): s["difficulty"] = int(x))

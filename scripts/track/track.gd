@@ -12,7 +12,7 @@ const SURFACE_DRAG := [0.0, 0.004, 0.05, 0.16, 0.0]   # resistência extra (fra�
 const DS := 2.0                 # espaçamento das amostras (m)
 const APRON := 1.5              # faixa logo após a linha branca (zebra ou asfalto)
 const WALL_H := 1.1
-const PIT_TAPER := 160.0
+const PIT_TAPER := 160.0       # padrão; cada pista pode definir "pit_taper"
 const PIT_ZONE_W := 17.0
 
 var def: Dictionary
@@ -32,6 +32,17 @@ var run_w := [PackedFloat32Array(), PackedFloat32Array()]   # [esquerda, direita
 var run_s := [PackedByteArray(), PackedByteArray()]         # tipo de superfície do escape
 var line_off := PackedFloat32Array()
 var speed_prof := PackedFloat32Array()
+var line_kap := PackedFloat32Array()   # curvatura do traçado ideal (1/m, sem sinal)
+var line_kap_s := PackedFloat32Array() # idem com sinal (+ = curva para a direita)
+var prof_mu := 1.5                     # aderência usada no perfil (curva)
+var prof_mub := 1.4                    # aderência usada no perfil (frenagem)
+## Conhecimento da pista pela IA: fator de ritmo por amostra (aprendido; ver tests/ai_lab.gd learn)
+var ai_k := PackedFloat32Array()
+var key := ""
+const AI_K_MIN := 0.80
+const AI_K_MAX := 1.30
+const PROF_KQ := 1.2 * 4.0 / (2.0 * 800.0)    # downforce/massa (por v²)
+const PROF_KD := 1.2 * 1.35 / (2.0 * 800.0)   # arrasto/massa (por v²)
 var aero_zone := PackedByteArray()
 var aero_zones: Array = []           # [[s_ini, s_fim], ...]
 var overtake_detect_s := 0.0
@@ -43,6 +54,8 @@ var pit_len := 0.0
 var pit_lane_off := 0.0
 var pit_box_off := 0.0
 var pit_speed := 22.2
+var pit_taper := PIT_TAPER
+var street := false                  # circuito de rua: muros colados, prédios, mar
 var box_u: Array = []                # posição (u ao longo do pit) de cada equipe
 
 var grid_slots: Array = []           # Transform3D
@@ -61,15 +74,19 @@ var _terrain_mats: Array = []
 # ======================================================================= construção
 func build(track_def: Dictionary, wet: float, quality: int) -> void:
 	def = track_def
+	key = String(def.get("key", ""))
 	wetness = wet
 	_quality = quality
 	half_width = float(def.get("width", 14.0)) * 0.5
 	pit_side = int(def.get("pit_side", 1))
 	pit_speed = float(def.get("pit_speed_kmh", 80.0)) / 3.6
+	pit_taper = float(def.get("pit_taper", PIT_TAPER))
+	street = bool(def.get("street", false))
 	_sample_spline()
 	_analyse()
 	_compute_racing_line()
-	_compute_speed_profile(1.5)
+	compute_speed_profile(1.5)
+	load_ai_knowledge()
 	_compute_aero_zones()
 	_setup_pit()
 	_make_textures()
@@ -194,6 +211,25 @@ func _analyse() -> void:
 					if st[q] != Surface.ASPHALT or typ == Surface.ASPHALT:
 						st[q] = typ
 					w[q] = maxf(w[q], ww)
+		if street:
+			# rua: calçada/guard-rail colado na pista
+			var rw := float(def.get("runoff", 1.4))
+			for i in n:
+				w[i] = rw
+				st[i] = Surface.ASPHALT
+		# áreas de escape específicas: [s_ini, s_fim, lado(-1 esq / 1 dir / 0 ambos), largura]
+		for e in def.get("escapes", []):
+			if int(e[2]) != 0 and int(e[2]) != int(sd):
+				continue
+			var i0 := int(float(e[0]) / ds)
+			var i1 := int(float(e[1]) / ds)
+			if i1 < i0:
+				i1 += n
+			for q in range(i0, i1 + 1):
+				var r := clampf(minf(q - i0, i1 - q) / 6.0, 0.0, 1.0)
+				var qi := q % n
+				w[qi] = maxf(w[qi], lerpf(w[qi], float(e[3]), r))
+				st[qi] = Surface.ASPHALT
 		run_w[side] = w
 		run_s[side] = st
 
@@ -305,14 +341,14 @@ func line_point(i: int, extra := 0.0) -> Vector3:
 
 
 ## Perfil de velocidade máxima (m/s) ao longo do traçado ideal.
-func _compute_speed_profile(mu: float) -> void:
+## mu = aderência lateral efetiva do carro; a frenagem usa a capacidade medida do carro
+## (tests/car_limits.gd: ~1,9 g a 100 km/h, ~5 g a 300 km/h).
+func compute_speed_profile(mu: float, mub := -1.0) -> void:
 	var g := 9.81
-	var m := 800.0
-	var cla := 4.0
-	var cda := 1.35
-	var rho := 1.2
-	var kq := rho * cla / (2.0 * m)
-	var kd := rho * cda / (2.0 * m)
+	prof_mu = mu
+	prof_mub = mub if mub > 0.0 else 1.38
+	var kq := PROF_KQ
+	var kd := PROF_KD
 	var vtop := 95.0
 	var p := PackedVector2Array()
 	p.resize(n)
@@ -321,6 +357,8 @@ func _compute_speed_profile(mu: float) -> void:
 		p[i] = Vector2(lp.x, lp.z)
 	var kap := PackedFloat32Array()
 	kap.resize(n)
+	var kap_sign_tmp := PackedFloat32Array()
+	kap_sign_tmp.resize(n)
 	for i in n:
 		var a := p[idx(i - 4)]
 		var b := p[i]
@@ -330,28 +368,84 @@ func _compute_speed_profile(mu: float) -> void:
 		var ca := c.distance_to(a)
 		var cross := absf((b - a).cross(c - a))
 		kap[i] = 2.0 * cross / maxf(ab * bc * ca, 0.0001)
+		var bend := (a + c - 2.0 * b).dot(Vector2(right[i].x, right[i].z))
+		kap_sign_tmp[i] = 1.0 if bend >= 0.0 else -1.0
+	line_kap.resize(n)
+	line_kap_s.resize(n)
 	speed_prof.resize(n)
 	for i in n:
 		var acc := 0.0
 		for k in range(-3, 4):
 			acc += kap[idx(i + k)]
 		var kk := acc / 7.0
+		line_kap[i] = kk
+		line_kap_s[i] = kk * kap_sign_tmp[i]
 		var den := kk - mu * kq
 		var v := vtop
 		if den > 0.0:
 			v = minf(vtop, sqrt(mu * g / den))
 		speed_prof[i] = v
-	var mub := mu * 0.92
 	for _p in 2:
 		for j in range(n - 1, -1, -1):
 			var nx := speed_prof[idx(j + 1)]
-			var ab := mub * (g + kq * nx * nx) + kd * nx * nx
-			speed_prof[j] = minf(speed_prof[j], sqrt(nx * nx + 2.0 * ab * ds))
+			var abk := prof_mub * (g + kq * nx * nx) + kd * nx * nx
+			speed_prof[j] = minf(speed_prof[j], sqrt(nx * nx + 2.0 * abk * ds))
 	for _p in 2:
 		for j in n:
 			var pv := speed_prof[idx(j - 1)]
-			var aa := minf(mu * 0.55 * (g + kq * pv * pv), 700000.0 / (m * maxf(pv, 5.0))) - kd * pv * pv
+			var aa := minf(mu * 0.55 * (g + kq * pv * pv), 700000.0 / (800.0 * maxf(pv, 5.0))) - kd * pv * pv
 			speed_prof[j] = minf(speed_prof[j], sqrt(maxf(pv * pv + 2.0 * maxf(aa, 0.0) * ds, 0.0)))
+
+
+## Carrega o fator de ritmo aprendido para esta pista (res://data/ai/<pista>.json).
+func load_ai_knowledge() -> void:
+	ai_k.resize(n)
+	ai_k.fill(1.0)
+	var path := "res://data/ai/%s.json" % key
+	if key == "" or not FileAccess.file_exists(path):
+		return
+	var d = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(d) != TYPE_DICTIONARY or int(d.get("n", 0)) != n:
+		push_warning("conhecimento da IA desatualizado para %s" % key)
+		return
+	var arr: Array = d["k"]
+	for i in n:
+		ai_k[i] = clampf(float(arr[i]), AI_K_MIN, AI_K_MAX)
+
+
+func save_ai_knowledge(path: String) -> void:
+	var arr: Array = []
+	for i in n:
+		arr.append(snappedf(ai_k[i], 0.001))
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify({"track": key, "n": n, "k": arr}))
+	f.close()
+
+
+## Ajuste do conhecimento: amostra i ganha (+) ou perde (-) ritmo; a perda se espalha
+## para trás (entrada/frenagem da curva), onde a velocidade foi decidida.
+func ai_learn(i: int, delta: float, back := 0) -> void:
+	if ai_k.size() != n:
+		return
+	if back <= 0:
+		ai_k[i] = clampf(ai_k[i] + delta, AI_K_MIN, AI_K_MAX)
+		return
+	for k in range(-back, 4):
+		var w := 1.0 - absf(float(k)) / float(back + 1)
+		var j := idx(i + k)
+		ai_k[j] = clampf(ai_k[j] + delta * w, AI_K_MIN, AI_K_MAX)
+
+
+## Desaceleração máxima REAL (m/s²) em linha reta a uma velocidade v (pista seca, pneu bom),
+## ajustada às medições de tests/car_limits.gd. Usada pela IA para frear no limite.
+func brake_cap(v: float) -> float:
+	var mub := prof_mub * clampf(1.12 - 0.0022 * v, 0.9, 1.1)
+	return mub * (9.81 + PROF_KQ * v * v) + PROF_KD * v * v
+
+
+## Aceleração lateral máxima (m/s²) a uma velocidade v.
+func lat_cap(v: float) -> float:
+	return prof_mu * (9.81 + PROF_KQ * v * v)
 
 
 func _compute_aero_zones() -> void:
@@ -400,8 +494,8 @@ func _setup_pit() -> void:
 	pit_box_off = half_width + APRON + 10.5
 	box_u.clear()
 	var teams := Teams.count()
-	var first := PIT_TAPER + 40.0
-	var spacing := minf(16.0, (pit_len - 2.0 * PIT_TAPER - 80.0) / maxf(teams, 1))
+	var first := pit_taper + 40.0
+	var spacing := minf(16.0, (pit_len - 2.0 * pit_taper - 80.0) / maxf(teams, 1))
 	for t in teams:
 		box_u.append(first + t * spacing)
 	# escape do lado do box vira asfalto do pit
@@ -435,13 +529,13 @@ func in_pit_range(s: float) -> bool:
 func pit_path_lateral(u: float) -> float:
 	var start_lat := (half_width - 2.5) * pit_side
 	var lane := pit_lane_off * pit_side
-	var e := smoothstep(0.0, PIT_TAPER, u)
-	var x := smoothstep(0.0, PIT_TAPER, pit_len - u)
+	var e := smoothstep(0.0, pit_taper, u)
+	var x := smoothstep(0.0, pit_taper, pit_len - u)
 	return lerpf(start_lat, lane, minf(e, x))
 
 
 func pit_limiter_zone(u: float) -> bool:
-	return u > PIT_TAPER * 0.7 and u < pit_len - PIT_TAPER * 0.7
+	return u > pit_taper * 0.7 and u < pit_len - pit_taper * 0.7
 
 
 # ======================================================================= geração de malhas
@@ -731,7 +825,7 @@ func _build_surfaces() -> void:
 	pm.size = Vector2(9000, 9000)
 	gm.mesh = pm
 	gm.position = Vector3(400, -0.6, 400)
-	gm.material_override = _terrain_material(Color(0.14, 0.27, 0.08), Color(0.24, 0.36, 0.12), 0.02, 0.0, 1.0)
+	gm.material_override = _water_material() if street else _terrain_material(Color(0.14, 0.27, 0.08), Color(0.24, 0.36, 0.12), 0.02, 0.0, 1.0)
 	gm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(gm)
 
@@ -752,6 +846,8 @@ func _build_walls() -> void:
 	var skirt := Builder.new()
 	var pside := 0 if pit_side < 0 else 1
 	var pitwall := Builder.new()
+	var curbwall := Builder.new()
+	var sidewalk := Builder.new()
 	for i in n:
 		var j := (i + 1) % n
 		var s0 := i * ds
@@ -770,7 +866,7 @@ func _build_walls() -> void:
 			var stripe := int(floor(s0 / 4.0)) % 2 == 0
 			var c := Color(0.82, 0.82, 0.8)
 			var ct := Color(0.75, 0.08, 0.06) if stripe else Color(0.92, 0.92, 0.92)
-			var pit_gar := side == pside and in_pit_range(s0) and pit_u(s0) > PIT_TAPER - 30.0 and pit_u(s0) < pit_len - PIT_TAPER + 30.0
+			var pit_gar := side == pside and in_pit_range(s0) and pit_u(s0) > pit_taper - 30.0 and pit_u(s0) < pit_len - pit_taper + 30.0
 			if sd > 0.0:
 				walls.quad(t0, b0, t1, b1, nn, nn, u0, u0, u1, u1, ct, c, ct, c)
 			else:
@@ -789,20 +885,36 @@ func _build_walls() -> void:
 				var g0 := point(i, l0 + 0.25 * sd, WALL_H)
 				var g1 := point(j, l1 + 0.25 * sd, WALL_H)
 				fence.quad(g0, f0, g1, f1, nn, nn, Vector2(s0, 0), Vector2(s0, 3.2), Vector2(s1, 0), Vector2(s1, 3.2), Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE, false)
-			# talude externo até o chão
+			# talude externo até o chão (rua: calçada de 4 m e muro de contenção vertical)
 			var k0 := point(i, l0 + 0.5 * sd, -0.1)
 			var k1 := point(j, l1 + 0.5 * sd, -0.1)
 			var e0 := point(i, l0 + 60.0 * sd, 0.0)
 			var e1 := point(j, l1 + 60.0 * sd, 0.0)
 			e0.y = -0.65
 			e1.y = -0.65
+			if street:
+				e0 = point(i, l0 + 4.5 * sd, -0.1)
+				e1 = point(j, l1 + 4.5 * sd, -0.1)
+				var d0 := Vector3(e0.x, -0.65, e0.z)
+				var d1 := Vector3(e1.x, -0.65, e1.z)
+				var cs := Color(0.78, 0.74, 0.66)
+				if sd > 0.0:
+					curbwall.quad(e0, d0, e1, d1, right[i] * sd, right[j] * sd, Vector2(s0, e0.y), Vector2(s0, -0.65), Vector2(s1, e1.y), Vector2(s1, -0.65), cs, cs, cs, cs, false)
+				else:
+					curbwall.quad(d0, e0, d1, e1, right[i] * sd, right[j] * sd, Vector2(s0, -0.65), Vector2(s0, e0.y), Vector2(s1, -0.65), Vector2(s1, e1.y), cs, cs, cs, cs, false)
+				var cw2 := Color(0.62, 0.6, 0.57)
+				if sd > 0.0:
+					sidewalk.quad(k0, e0, k1, e1, up[i], up[j], Vector2(k0.x, k0.z), Vector2(e0.x, e0.z), Vector2(k1.x, k1.z), Vector2(e1.x, e1.z), cw2, cw2, cw2, cw2, false)
+				else:
+					sidewalk.quad(e0, k0, e1, k1, up[i], up[j], Vector2(e0.x, e0.z), Vector2(k0.x, k0.z), Vector2(e1.x, e1.z), Vector2(k1.x, k1.z), cw2, cw2, cw2, cw2, false)
+				continue
 			if sd > 0.0:
 				skirt.quad(k0, e0, k1, e1, up[i], up[j], Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE, false)
 			else:
 				skirt.quad(e0, k0, e1, k1, up[i], up[j], Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE, false)
 		# muro do pit (separa pista e pit lane)
 		var u := pit_u(s0)
-		if u > PIT_TAPER - 10.0 and u < pit_len - PIT_TAPER + 10.0:
+		if u > pit_taper - 10.0 and u < pit_len - pit_taper + 10.0:
 			var lw := (half_width + APRON + 1.2) * pit_side
 			var lw2 := lw + 0.6 * pit_side
 			var a0 := point(i, minf(lw, lw2), 0.0)
@@ -834,7 +946,16 @@ func _build_walls() -> void:
 	fm.uv1_scale = Vector3(1.0 / 2.0, 1.0 / 3.2, 1.0)
 	fm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_add_mesh(fence.commit(false), fm, false)
-	_add_mesh(skirt.commit(false), _terrain_material(Color(0.14, 0.28, 0.08), Color(0.25, 0.38, 0.12), 0.03, 0.0, 1.0), false)
+	if street:
+		var stone := StandardMaterial3D.new()
+		stone.vertex_color_use_as_albedo = true
+		stone.roughness = 0.9
+		stone.albedo_texture = _noise_tex
+		stone.uv1_scale = Vector3(0.25, 0.25, 1.0)
+		_add_mesh(curbwall.commit(false), stone, false)
+		_add_mesh(sidewalk.commit(false), stone, false)
+	else:
+		_add_mesh(skirt.commit(false), _terrain_material(Color(0.14, 0.28, 0.08), Color(0.25, 0.38, 0.12), 0.03, 0.0, 1.0), false)
 
 
 func _fence_texture() -> ImageTexture:
@@ -865,15 +986,15 @@ func _build_pit_buildings() -> void:
 		var j := (i + 1) % n
 		var s1 := s0 + ds
 		var lat := (pit_lane_off + 2.8) * sd
-		if u > PIT_TAPER and u < pit_len - PIT_TAPER and int(s0 / 2.0) % 3 != 0:
+		if u > pit_taper and u < pit_len - pit_taper and int(s0 / 2.0) % 3 != 0:
 			_mark(marks, i, j, lat, 0.12, s0, s1, Color(0.95, 0.95, 0.95))
 		# linha de entrada/saída (sólida) seguindo a borda da faixa
-		if u < PIT_TAPER or u > pit_len - PIT_TAPER:
+		if u < pit_taper or u > pit_len - pit_taper:
 			var a := pit_path_lateral(u) - 2.4 * sd
 			if absf(a) > half_width + 0.3:
 				_mark(marks, i, j, a, 0.15, s0, s1, Color(0.95, 0.95, 0.95))
 		# zona de limite de velocidade
-		if absf(u - PIT_TAPER * 0.7) < 1.0 or absf(u - (pit_len - PIT_TAPER * 0.7)) < 1.0:
+		if absf(u - pit_taper * 0.7) < 1.0 or absf(u - (pit_len - pit_taper * 0.7)) < 1.0:
 			for q in 8:
 				var la := (half_width + APRON + 1.8 + q * 1.8) * sd
 				_mark(marks, i, j, la, 0.9, s0, s1, Color(0.95, 0.95, 0.95))
@@ -893,9 +1014,8 @@ func _build_pit_buildings() -> void:
 	var mid_u := pit_len * 0.5
 	var s_mid := wrap_s(pit_entry_s + mid_u)
 	var i_mid := idx_at_s(s_mid)
-	var b_len := pit_len - 2.0 * PIT_TAPER + 60.0
+	var b_len := pit_len - 2.0 * pit_taper + 60.0
 	var lat_b := (half_width + APRON + PIT_ZONE_W + 7.0) * sd
-	var f := frame(i_mid, lat_b, 0.0)
 	var concrete := StandardMaterial3D.new()
 	concrete.albedo_color = Color(0.86, 0.87, 0.88)
 	concrete.roughness = 0.7
@@ -906,9 +1026,16 @@ func _build_pit_buildings() -> void:
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color(0.07, 0.07, 0.08)
 	dark.roughness = 0.9
-	_box_at(f, Vector3(14.0, 7.0, b_len), Vector3(0, 3.5, 0), concrete, true)
-	_box_at(f, Vector3(12.0, 4.0, b_len), Vector3(sd * 1.5, 10.0, 0), glass, false)
-	_box_at(f, Vector3(16.0, 0.4, b_len + 2.0), Vector3(0, 12.2, 0), concrete, false)
+	# em segmentos que acompanham a reta (em pista de rua a reta dos boxes é curva:
+	# uma caixa única invadia a pista nas pontas)
+	var nseg := maxi(int(ceil(b_len / 24.0)), 1)
+	var seg_len := b_len / nseg
+	for k in nseg:
+		var sk := wrap_s(s_mid - b_len * 0.5 + (k + 0.5) * seg_len)
+		var f := frame(idx_at_s(sk), lat_b, 0.0)
+		_box_at(f, Vector3(14.0, 7.0, seg_len + 0.6), Vector3(0, 3.5, 0), concrete, true)
+		_box_at(f, Vector3(12.0, 4.0, seg_len + 0.6), Vector3(sd * 1.5, 10.0, 0), glass, false)
+		_box_at(f, Vector3(16.0, 0.4, seg_len + 0.8), Vector3(0, 12.2, 0), concrete, false)
 	# portas das garagens com cor da equipe
 	for t in Teams.count():
 		var s_box := wrap_s(pit_entry_s + float(box_u[t]))
@@ -928,7 +1055,7 @@ func _build_pit_buildings() -> void:
 		lbl.transform = gf * Transform3D(Basis(Vector3.UP, -PI * 0.5 * sd), Vector3(-0.1 * sd, 5.2, 0))
 		add_child(lbl)
 	# placa de velocidade do pit
-	for u in [PIT_TAPER * 0.7 - 5.0]:
+	for u in [pit_taper * 0.7 - 5.0]:
 		var ii := idx_at_s(pit_entry_s + u)
 		var pf := frame(ii, (half_width + APRON + PIT_ZONE_W - 1.0) * sd, 0.0)
 		var wm := StandardMaterial3D.new()
@@ -1075,14 +1202,20 @@ func _build_scenery() -> void:
 	_brake_boards()
 	# placas publicitárias nos muros
 	_ad_boards(rng)
-	# árvores
-	_trees(rng)
+	# árvores (autódromo) ou cidade (circuito de rua)
+	if street:
+		_buildings(rng)
+		_tunnels()
+	else:
+		_trees(rng)
 	# câmeras de TV
 	tv_cams.clear()
 	var step := int(220.0 / ds)
 	for i in range(0, n, step):
 		var side := 1 if (i / step) % 2 == 0 else 0
-		var lat := _wall_lateral(i, side) + (6.0 if side == 1 else -6.0)
+		# rua: câmera sobre a calçada (atrás do guard-rail), não dentro dos prédios
+		var off := 2.0 if street else 6.0
+		var lat := _wall_lateral(i, side) + (off if side == 1 else -off)
 		tv_cams.append(point(i, lat, 5.0 + (i % 3) * 2.0))
 
 
@@ -1303,6 +1436,228 @@ func _trees(rng: RandomNumberGenerator) -> void:
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		add_child(mmi)
+
+
+# ======================================================================= circuito de rua
+## Mar (porto): água com ondas leves e reflexo.
+func _water_material() -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode cull_disabled;
+uniform sampler2D nrm : hint_normal, filter_linear_mipmap, repeat_enable;
+void fragment() {
+	vec2 w = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xz;
+	vec3 n1 = texture(nrm, w * 0.018 + vec2(TIME * 0.012, TIME * 0.007)).xyz;
+	vec3 n2 = texture(nrm, w * 0.041 - vec2(TIME * 0.009, -TIME * 0.011)).xyz;
+	NORMAL_MAP = normalize(mix(n1, n2, 0.5));
+	NORMAL_MAP_DEPTH = 0.35;
+	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 4.0);
+	ALBEDO = mix(vec3(0.02, 0.16, 0.24), vec3(0.10, 0.32, 0.42), fres);
+	ROUGHNESS = 0.06;
+	METALLIC = 0.15;
+	SPECULAR = 0.7;
+}
+"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("nrm", _normal_tex)
+	return m
+
+
+## Fachada com janelas (textura gerada): repete a cada 4 m (largura) x 3,5 m (andar).
+func _facade_texture() -> ImageTexture:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	img.fill(Color(1, 1, 1))
+	for y in 64:
+		for x in 64:
+			var c := Color(1, 1, 1)
+			if y > 58:
+				c = Color(0.86, 0.86, 0.86)          # friso do andar
+			if x >= 16 and x < 48 and y >= 12 and y < 50:
+				c = Color(0.82, 0.82, 0.82)          # moldura
+				if x >= 19 and x < 45 and y >= 15 and y < 48:
+					var g := 0.13 + 0.06 * float(y - 15) / 33.0
+					c = Color(g, g * 1.25, g * 1.6)      # vidro
+					if x == 31 or x == 32:
+						c = Color(0.75, 0.75, 0.75)      # caixilho
+			if (x >= 9 and x < 16 or x >= 48 and x < 55) and y >= 15 and y < 48:
+				c = Color(0.45, 0.55, 0.42)              # venezianas
+			img.set_pixel(x, y, c)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
+## O ponto p (2D) está longe o bastante da pista (rua + escape + calçada + margem) em todas as amostras?
+func _street_clear(p: Vector2, grid: Dictionary, margin: float) -> bool:
+	var cx := floori(p.x / 25.0)
+	var cz := floori(p.y / 25.0)
+	for gx in range(cx - 2, cx + 3):
+		for gz in range(cz - 2, cz + 3):
+			var cell = grid.get(Vector2i(gx, gz))
+			if cell == null:
+				continue
+			for i in cell:
+				var q := Vector2(pos[i].x, pos[i].z)
+				var d := p - q
+				var lat := d.dot(Vector2(right[i].x, right[i].z))
+				var side := 1 if lat > 0.0 else 0
+				var need := half_width + APRON + float(run_w[side][i]) + margin
+				if d.length() < need:
+					return false
+	return true
+
+
+## Quarteirões de prédios em tons pastel dos dois lados da rua (exceto trechos abertos para o mar).
+func _buildings(rng: RandomNumberGenerator) -> void:
+	var grid := {}
+	for i in n:
+		var key := Vector2i(floori(pos[i].x / 25.0), floori(pos[i].z / 25.0))
+		if not grid.has(key):
+			grid[key] = []
+		grid[key].append(i)
+	var open: Array = def.get("open", [])
+	var stands: Array = def.get("grandstands", [])
+	var walls := Builder.new()
+	var roofs := Builder.new()
+	var palette := [Color(0.93, 0.87, 0.74), Color(0.95, 0.80, 0.66), Color(0.90, 0.72, 0.62), Color(0.96, 0.93, 0.86),
+		Color(0.86, 0.78, 0.60), Color(0.98, 0.86, 0.78), Color(0.80, 0.82, 0.80), Color(0.92, 0.66, 0.52)]
+	for side in 2:
+		var sd := -1.0 if side == 0 else 1.0
+		var i := 0
+		while i < n:
+			var wlen := rng.randf_range(11.0, 22.0)
+			var depth := rng.randf_range(10.0, 17.0)
+			var h := rng.randf_range(10.0, 28.0) * (1.3 if rng.randf() < 0.15 else 1.0)
+			var ic := idx(i + int(wlen * 0.5 / ds))
+			var sc := ic * ds
+			i += int((wlen + rng.randf_range(0.6, 2.5)) / ds)
+			var skip := false
+			for o in open:
+				var a := float(o[0])
+				var b := float(o[1])
+				if (int(o[2]) == 0 or int(o[2]) == int(sd)) and wrap_s(sc - a) < wrap_s(b - a):
+					skip = true
+			for g in stands:
+				var gs := float(g[0]) * length
+				var dd := absf(wrap_s(sc - gs + length * 0.5) - length * 0.5)
+				if int(g[1]) == int(sd) and dd < float(g[2]) * 0.5 + 12.0:
+					skip = true
+			if side == (0 if pit_side < 0 else 1) and pit_u(sc) > -30.0 and pit_u(sc) < pit_len + 30.0:
+				skip = true
+			if skip:
+				continue
+			var t := Vector3(tang[ic].x, 0.0, tang[ic].z).normalized()
+			var r := t.cross(Vector3.UP) * sd
+			var lat := (half_width + APRON + float(run_w[side][ic]) + 5.2) * sd
+			var fp := point(ic, lat)
+			var front := Vector3(fp.x, 0.0, fp.z)
+			var c0 := front - t * wlen * 0.5
+			var c1 := front + t * wlen * 0.5
+			var c2 := c1 + r * depth
+			var c3 := c0 + r * depth
+			var ok := true
+			for c in [c0, c1, c2, c3, (c0 + c2) * 0.5, (c0 + c1) * 0.5, (c2 + c3) * 0.5]:
+				var cv: Vector3 = c
+				if not _street_clear(Vector2(cv.x, cv.z), grid, 4.8):
+					ok = false
+					break
+			if not ok:
+				continue
+			var y0 := -0.65
+			var y1 := pos[ic].y + h
+			var col: Color = palette[rng.randi() % palette.size()]
+			var corners := [c0, c1, c2, c3]
+			var u := 0.0
+			for k in 4:
+				var a: Vector3 = corners[k]
+				var b2: Vector3 = corners[(k + 1) % 4]
+				var wl := a.distance_to(b2)
+				var nrm := (b2 - a).cross(Vector3.UP).normalized()
+				# u em módulos de 4 m, v em andares de 3,5 m (contados do topo)
+				walls.quad(Vector3(a.x, y1, a.z), Vector3(b2.x, y1, b2.z), Vector3(a.x, y0, a.z), Vector3(b2.x, y0, b2.z), nrm, nrm,
+					Vector2(u, 0.0), Vector2(u + wl / 4.0, 0.0), Vector2(u, (y1 - y0) / 3.5), Vector2(u + wl / 4.0, (y1 - y0) / 3.5),
+					col, col, col, col, false)
+				u += wl / 4.0
+			var rc := Color(0.62, 0.36, 0.27) if rng.randf() < 0.55 else Color(0.55, 0.55, 0.53)
+			roofs.quad(Vector3(c0.x, y1, c0.z), Vector3(c1.x, y1, c1.z), Vector3(c3.x, y1, c3.z), Vector3(c2.x, y1, c2.z), Vector3.UP, Vector3.UP,
+				Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, rc, rc, rc, rc, false)
+	var fm := StandardMaterial3D.new()
+	fm.vertex_color_use_as_albedo = true
+	fm.albedo_texture = _facade_texture()
+	fm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	fm.roughness = 0.85
+	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_add_mesh(walls.commit(false), fm)
+	var rm := StandardMaterial3D.new()
+	rm.vertex_color_use_as_albedo = true
+	rm.roughness = 0.9
+	rm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_add_mesh(roofs.commit(false), rm)
+
+
+## Túnel: teto de concreto entre os muros, paredes até o teto e faixas de luz.
+func _tunnels() -> void:
+	for tn in def.get("tunnels", []):
+		var i0 := idx_at_s(float(tn[0]))
+		var i1 := idx_at_s(float(tn[1]))
+		if i1 < i0:
+			i1 += n
+		var roof := Builder.new()
+		var side_w := Builder.new()
+		var lamps := Builder.new()
+		var hgt := 6.2
+		var cc := Color(0.42, 0.41, 0.40)
+		var sw := Color(0.62, 0.60, 0.56)
+		for q in range(i0, i1):
+			var i := q % n
+			var j := (q + 1) % n
+			var s0 := q * ds
+			var s1 := (q + 1) * ds
+			var lL0 := _wall_lateral(i, 0) - 0.3
+			var lL1 := _wall_lateral(j, 0) - 0.3
+			var lR0 := _wall_lateral(i, 1) + 0.3
+			var lR1 := _wall_lateral(j, 1) + 0.3
+			roof.quad(point(i, lL0, hgt), point(i, lR0, hgt), point(j, lL1, hgt), point(j, lR1, hgt), -up[i], -up[j],
+				Vector2(lL0, s0) * 0.25, Vector2(lR0, s0) * 0.25, Vector2(lL1, s1) * 0.25, Vector2(lR1, s1) * 0.25, cc, cc, cc, cc, false)
+			# laje superior (espessura): não se vê o céu através do teto
+			roof.quad(point(i, lR0, hgt + 1.2), point(i, lL0, hgt + 1.2), point(j, lR1, hgt + 1.2), point(j, lL1, hgt + 1.2), up[i], up[j],
+				Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, cc, cc, cc, cc, false)
+			for side in 2:
+				var l0 := lL0 if side == 0 else lR0
+				var l1 := lL1 if side == 0 else lR1
+				side_w.quad(point(i, l0, WALL_H - 0.05), point(j, l1, WALL_H - 0.05), point(i, l0, hgt + 1.2), point(j, l1, hgt + 1.2),
+					right[i], right[j], Vector2(s0, 0) * 0.25, Vector2(s1, 0) * 0.25, Vector2(s0, hgt) * 0.25, Vector2(s1, hgt) * 0.25, sw, sw, sw, sw, false)
+			# luminárias no teto (duas faixas)
+			if q % 3 != 0:
+				for lat in [-2.4, 2.4]:
+					var la: float = lat
+					lamps.quad(point(i, la - 0.25, hgt - 0.05), point(i, la + 0.25, hgt - 0.05), point(j, la - 0.25, hgt - 0.05), point(j, la + 0.25, hgt - 0.05),
+						-up[i], -up[j], Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE, false)
+		var cm := StandardMaterial3D.new()
+		cm.vertex_color_use_as_albedo = true
+		cm.roughness = 0.95
+		cm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_add_mesh(roof.commit(false), cm)
+		_add_mesh(side_w.commit(false), cm)
+		var lm := StandardMaterial3D.new()
+		lm.albedo_color = Color(1.0, 0.86, 0.6)
+		lm.emission_enabled = true
+		lm.emission = Color(1.0, 0.82, 0.55)
+		lm.emission_energy_multiplier = 3.0
+		lm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_add_mesh(lamps.commit(false), lm, false)
+		# luz dentro do túnel (poucas, sem sombra)
+		if _quality >= 1:
+			var step := int(45.0 / ds)
+			for q in range(i0 + step / 2, i1, step):
+				var li := OmniLight3D.new()
+				li.position = point(q % n, 0.0, hgt - 0.6)
+				li.light_color = Color(1.0, 0.84, 0.6)
+				li.light_energy = 2.2
+				li.omni_range = 26.0
+				li.shadow_enabled = false
+				add_child(li)
 
 
 func _compute_minimap() -> void:

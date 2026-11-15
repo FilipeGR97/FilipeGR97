@@ -82,6 +82,8 @@ func _ready() -> void:
 	if bool(Game.settings["show_racing_line"]):
 		_build_racing_line_guide()
 	_total_laps = int(ses["laps"]) if mode == Game.Mode.QUICK_RACE else 0
+	if _total_laps < 0:
+		_total_laps = int(tdef.get("laps_full", ceili(305000.0 / track.length)))
 	_fuel_per_lap = track.length / 1000.0 * 0.27 * float(ses["fuel_use"])
 	# ---------------- carros
 	_spawn_cars(ses, tdef)
@@ -191,8 +193,9 @@ func _spawn_cars(ses: Dictionary, tdef: Dictionary) -> void:
 		else:
 			var drv_k := lerpf(0.985, 1.0, clampf((float(e["driver"]["skill"]) - 0.95) / 0.05, 0.0, 1.0))
 			var aero_k := 1.0 - (1.0 - float(Teams.team(int(e["team"]))["aero"])) * 0.5
-			var skill := lerpf(0.86, 1.0, diff) * drv_k * aero_k
+			var skill := lerpf(0.80, 0.99, diff) * drv_k * aero_k
 			var ai := AIDriver.new(clampf(skill, 0.8, 1.0))
+			ai.aggression = clampf(0.35 + (float(e["driver"]["skill"]) - 0.95) * 6.0 + _rng.randf_range(-0.15, 0.25), 0.2, 0.95)
 			ai.cars = cars
 			ai.race = self
 			car.controller = ai
@@ -712,6 +715,8 @@ func _update_flags(dt: float) -> void:
 		vsc_t = 0.0
 		_vsc_ending = -1.0
 		hud.message("VIRTUAL SAFETY CAR — " + trigger, UIKit.YELLOW, 4.0)
+		if OS.get_cmdline_user_args().has("racelog"):
+			print("[vsc] acionado t=%.0f: %s" % [race_time(), trigger])
 	if vsc:
 		vsc_t += dt
 		var still := false

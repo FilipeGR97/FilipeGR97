@@ -4,6 +4,59 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 3 — v0.3.0 (Mônaco + IA que aprende a pista)
+
+### Circuito de Mônaco
+- Traçado digitalizado do mapa oficial: **3.337 m, 19 curvas, sentido horário** — Sainte Dévote, subida do
+  Beau Rivage, Massenet, Cassino, Mirabeau, **grampo do Grand Hotel** (raio ~10 m, o mais lento do ano),
+  Portier, **túnel**, chicane do porto, Tabac, piscina, Rascasse e Anthony Noghes.
+- Altimetria real: sobe ~42 m da Sainte Dévote até o Cassino e desce até o túnel.
+- **Modo circuito de rua** (novo no gerador de pistas): guard-rail colado na pista, calçada, quarteirões de
+  prédios em tons pastel, **mar/porto** com reflexo e ondas, túnel com teto, iluminação e luz própria,
+  áreas de escape só onde existem de verdade (Sainte Dévote, Mirabeau, chicane), pit lane curto (60 km/h).
+- Menu: opção **Distância total** nas voltas (Mônaco = 78 voltas, Serra Azul = 61).
+
+### IA nova (o que você percebeu estava certo)
+Medimos: a IA antiga dava **1:32.6** na Serra Azul, mas o carro dela aguenta **1:26** — ela deixava ~6 s por
+volta na mesa porque seguia o perfil conservador da linha guia (o vermelho da linha).
+- **Conhecimento da pista**: cada trecho tem um fator de ritmo aprendido (como o simulador das equipes):
+  onde dá, a IA freia depois e contorna mais rápido que a linha guia; onde o carro não aguenta, alivia.
+  Vem pré-treinado para cada pista (`data/ai/*.json`) e continua se ajustando na corrida (se escorrega numa
+  curva, alivia naquela curva nas voltas seguintes).
+- **Direção corrigida**: a IA compensava duas vezes a deriva do carro e não dava ao pneu dianteiro o ângulo
+  que ele precisa — abria nas curvas no limite. Agora limita o esterço ao que a frente aguenta (como a sua
+  assistência de direção).
+- **Pneu frio** (largada, saída do box): a IA respeita a aderência menor.
+- **Defesa**: com alguém colado atrás antes de uma frenagem, fecha a porta por dentro — um movimento só.
+- **Ataque**: escolhe o lado de **dentro** da próxima curva e, emparelhada, **freia mais tarde** para completar.
+- Cada piloto tem agressividade própria (os mais habilidosos defendem/atacam mais).
+- **Distância de segurança recalculada a cada passo** + frenagem de emergência ao ver o carro da frente
+  frear (antes era 20×/s com a velocidade "velha" do líder — com a IA freando mais forte isso dava batida
+  traseira). Na chuva a distância aumenta (freia-se menos).
+- **Dificuldade reescalonada**: 100 = limite do carro; 85–95 ≈ 1–2,5 s mais lenta que o limite.
+
+### Correções encontradas
+- O prédio dos boxes era uma caixa reta de 345 m; numa reta de box curva (Mônaco) a ponta **invadia a pista**
+  (batida "invisível"). Agora é feito em segmentos que acompanham a reta.
+- Câmeras de TV de circuito de rua ficavam dentro dos prédios.
+
+### Testes feitos
+- IA na Serra Azul: 1:32.6 (antiga) → **1:26.1** no limite; dificuldade ~95% ≈ 1:28, ~85% ≈ 1:29.
+- Corridas com 20 carros: Serra Azul seco (3 danos leves de asa, nenhum VSC), Serra Azul **chuva forte**
+  (nenhum VSC, 1 dano leve — antes eram 4 VSCs em 3 voltas), Mônaco (1–2 danos leves, sem carro parado).
+- 14/14 cenários (configuração padrão e a sua), teste de pilotagem e da brita.
+
+### Ferramentas novas (dev)
+`tests/ai_lab.gd` (ritmo/limpeza da IA, `learn` treina a pista), `tests/car_limits.gd` (frenagem máxima real),
+`tests/skidpad.gd` (aderência lateral).
+
+### O que testar
+- Corrida em **Mônaco** (Corrida rápida → Circuito). Repare no túnel, no porto e nos prédios.
+- Corrida na Serra Azul com dificuldade 85–95 no modo manual: a IA deve andar no seu ritmo, defender e atacar.
+- Se ficar difícil demais, baixe a dificuldade (a escala mudou).
+
+---
+
 ## Patch 2.1 — v0.2.1 (correções do box)
 
 | Problema relatado | Causa | Correção |
