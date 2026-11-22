@@ -1,36 +1,25 @@
-"""Corrige loops de motor com timbre fora da curva (Patch 5).
+"""Corrige loops de motor com timbre fora da curva (Patch 5 / 5.1).
 
-Os loops de cada motor vêm de trechos diferentes da gravação. No V6, V8 e V12 alguns loops tinham "brilho"
-muito diferente dos vizinhos (ex.: V12 abafado no giro baixo, V6 chiado até ~9.500 rpm e limpo acima), e ao
-acelerar parecia que o som trocava de motor. O V10 já era coerente e não é alterado.
+Os loops de cada motor são costurados de trechos diferentes da gravação. Às vezes um loop sai com "brilho"
+(centroide espectral) bem diferente dos vizinhos — ao acelerar parece que o som troca de motor.
 
-Correção: o loop ruim é substituído pelo loop bom mais próximo, reafinado para o rpm do loop substituído
-(reamostragem por FFT do ciclo inteiro: o resultado continua um loop perfeito, sem emenda). É o mesmo que o
-jogo faz em tempo real com o pitch, só que pré-calculado.
+Correção automática, por motor (camada "on"):
+  1. mede o centroide espectral de cada loop e ajusta uma reta log(centroide) x log(rpm)
+  2. loop com desvio > 22% da reta é substituído pelo loop bom mais próximo, reafinado para o rpm dele
+     (reamostragem por FFT do ciclo inteiro: continua um loop perfeito, sem emenda)
+Os loops "off" (alívio) são versões abafadas dos "on" e são refeitos a partir dos "on" corrigidos.
+Por fim, tons agudos isolados (> 1,5 kHz e mais de 24 dB acima do entorno) são aparados: no giro máximo,
+com o pitch subindo, eles viravam um "piado" (queixa do V10 gerado da gravação nova, Patch 5.1).
 
-Depois, um equalizador fixo (o mesmo em todos os loops "on", então não cria pulsação) aproxima o equilíbrio de
-frequências do V6 do de um carro 2026 de referência: o nosso V6 tinha 3-6 dB a menos entre 2 e 4 kHz (abafado)
-e grave demais em ~180 Hz.
-
-Uso:  PYTHONPATH=<pasta com numpy> python tools/engine_loop_fix.py <pasta_do_projeto>
-Rode UMA vez sobre os loops recém-gerados por build_engine_samples.py (rodar de novo aplicaria o EQ duas vezes).
+Uso:  PYTHONPATH=<pasta com numpy e scipy> python tools/engine_loop_fix.py <pasta_do_projeto> [motores...]
+Rode logo depois de build_engine_samples.py.
 """
 import os, re, sys, struct
 import numpy as np
 
 PROJ = sys.argv[1]
-# motor: {loop_ruim: loop_bom}
-FIX = {
-    "orion": {"on_0": "on_4", "on_1": "on_4", "on_2": "on_4", "on_3": "on_4"},
-    "kestrel": {"on_7": "on_6"},
-    "helix": {"on_0": "on_3", "on_1": "on_3", "on_2": "on_3", "on_4": "on_3"},
-}
-
-
-# motor: pontos (Hz, dB) do equalizador dos loops "on"
-EQ = {
-    "orion": [(100, 0), (177, -4), (250, -2), (500, 0), (1000, 0), (2000, 3), (2828, 5), (4000, 5), (5657, 2), (8000, 0)],
-}
+ENGINES = sys.argv[2:] or ["orion", "kestrel", "valkyr", "helix"]
+MAX_DEV = 0.22
 
 
 def read_wav(path):
@@ -78,38 +67,89 @@ def resample_loop(a, ratio):
     return np.stack(out, axis=1)
 
 
+def centroid(a, sr):
+    m = a.mean(axis=1)
+    S = np.abs(np.fft.rfft(m * np.hanning(len(m)))) ** 2
+    F = np.fft.rfftfreq(len(m), 1 / sr)
+    return float((S * F).sum() / S.sum())
+
+
+def lowpass_loop(a, sr, fc):
+    n = a.shape[0]
+    F = np.fft.rfftfreq(n, 1 / sr)
+    g = 1.0 / np.sqrt(1.0 + (F / fc) ** 4)
+    return np.stack([np.fft.irfft(np.fft.rfft(a[:, c]) * g, n) for c in range(a.shape[1])], axis=1)
+
+
+def tame_peaks(a, sr, f0=1500.0, max_db=24.0):
+    """Apara picos estreitos acima de f0 que passam de max_db sobre a mediana local (circular: loop intacto)."""
+    from scipy.ndimage import median_filter
+    n = a.shape[0]
+    F = np.fft.rfftfreq(n, 1 / sr)
+    m = a.mean(axis=1)
+    S = 20 * np.log10(np.abs(np.fft.rfft(m)) + 1e-9)
+    med = median_filter(S, size=max(5, int(300.0 / (F[1] - F[0]))))
+    over = np.clip(S - med - max_db, 0.0, None)
+    over[F < f0] = 0.0
+    g = 10 ** (-over / 20.0)
+    out = np.stack([np.fft.irfft(np.fft.rfft(a[:, c]) * g, n) for c in range(a.shape[1])], axis=1)
+    return out * (np.sqrt((a ** 2).mean()) / (np.sqrt((out ** 2).mean()) + 1e-12)), float(over.max())
+
+
 def main():
     src = open(os.path.join(PROJ, "scripts/data/engine_samples.gd"), encoding="utf-8").read()
-    for eng, fixes in FIX.items():
+    for eng in ENGINES:
         blk = src[src.index('"%s": {' % eng):]
         blk = blk[:blk.index("\n\t},")]
-        rpm = {}
+        loops = {}
         for kind in ("on", "off"):
             part = blk[blk.index('"%s": [' % kind):]
             part = part[:part.index("]")]
-            for fname, r in re.findall(r'"file": "([^"]+)", "rpm": ([0-9.]+)', part):
-                rpm[fname[:-4]] = float(r)
-        for bad, good in fixes.items():
-            a, sr = read_wav(os.path.join(PROJ, "assets/audio", eng, good + ".wav"))
-            ratio = rpm[bad] / rpm[good]
-            out = resample_loop(a, ratio)
-            out *= np.sqrt((a ** 2).mean()) / (np.sqrt((out ** 2).mean()) + 1e-12)
-            write_wav(os.path.join(PROJ, "assets/audio", eng, bad + ".wav"), out, sr)
-            print("%s %s <- %s x%.3f (%.2f s)" % (eng, bad, good, ratio, out.shape[0] / sr))
-    for eng, pts in EQ.items():
-        fx = np.log([p[0] for p in pts])
-        gx = np.array([p[1] for p in pts], dtype=float)
-        for k in range(8):
-            path = os.path.join(PROJ, "assets/audio", eng, "on_%d.wav" % k)
-            a, sr = read_wav(path)
-            n = a.shape[0]
-            F = np.fft.rfftfreq(n, 1 / sr)
-            g = 10 ** (np.interp(np.log(np.maximum(F, 1.0)), fx, gx) / 20.0)
-            rms0 = np.sqrt((a ** 2).mean())
-            out = np.stack([np.fft.irfft(np.fft.rfft(a[:, c]) * g, n) for c in range(a.shape[1])], axis=1)
-            out *= rms0 / (np.sqrt((out ** 2).mean()) + 1e-12)
-            write_wav(path, out, sr)
-        print("%s: EQ aplicado nos loops on" % eng)
+            loops[kind] = [(f[:-4], float(r)) for f, r in re.findall(r'"file": "([^"]+)", "rpm": ([0-9.]+)', part)]
+        d = os.path.join(PROJ, "assets/audio", eng)
+        data = {name: read_wav(os.path.join(d, name + ".wav")) for name, _ in loops["on"]}
+        rpm = dict(loops["on"])
+        names = [n for n, _ in loops["on"]]
+        x = np.log([rpm[n] for n in names])
+        y = np.log([centroid(*data[n]) for n in names])
+        # reta robusta: ajusta, descarta o pior, ajusta de novo
+        good = np.ones(len(names), bool)
+        for _ in range(3):
+            coef = np.polyfit(x[good], y[good], 1)
+            dev = np.abs(np.exp(y - np.polyval(coef, x)) - 1.0)
+            worst = int(np.argmax(np.where(good, dev, -1)))
+            if dev[worst] > MAX_DEV and good.sum() > 4:
+                good[worst] = False
+        coef = np.polyfit(x[good], y[good], 1)
+        dev = np.abs(np.exp(y - np.polyval(coef, x)) - 1.0)
+        bad = [i for i in range(len(names)) if dev[i] > MAX_DEV]
+        for i in bad:
+            ok = [j for j in range(len(names)) if j not in bad]
+            j = min(ok, key=lambda j: abs(x[j] - x[i]))
+            a, sr = data[names[j]]
+            out = resample_loop(a, rpm[names[i]] / rpm[names[j]])
+            out *= np.sqrt((data[names[i]][0] ** 2).mean()) / (np.sqrt((out ** 2).mean()) + 1e-12)
+            write_wav(os.path.join(d, names[i] + ".wav"), out, sr)
+            data[names[i]] = (out, sr)
+            print("%s %s (desvio %.0f%%) <- %s x%.3f" % (eng, names[i], dev[i] * 100, names[j], rpm[names[i]] / rpm[names[j]]))
+        worst = 0.0
+        for nm in names:
+            a, sr = data[nm]
+            a2, cut = tame_peaks(a, sr)
+            worst = max(worst, cut)
+            write_wav(os.path.join(d, nm + ".wav"), a2, sr)
+            data[nm] = (a2, sr)
+        print("%s: tons agudos aparados (maior corte %.1f dB)" % (eng, worst))
+        if not bad:
+            print("%s: timbre coerente (desvio máx %.0f%%)" % (eng, dev.max() * 100))
+        # "off" = versão abafada do "on" mais próximo (como no build_engine_samples.py), refeita
+        for name, r in loops["off"]:
+            j = min(range(len(names)), key=lambda j: abs(np.log(rpm[names[j]]) - np.log(r)))
+            a, sr = data[names[j]]
+            soft = lowpass_loop(resample_loop(a, r / rpm[names[j]]), sr, 1600.0)
+            old, _ = read_wav(os.path.join(d, name + ".wav"))
+            soft *= np.sqrt((old ** 2).mean()) / (np.sqrt((soft ** 2).mean()) + 1e-12)
+            write_wav(os.path.join(d, name + ".wav"), soft, sr)
 
 
 if __name__ == "__main__":

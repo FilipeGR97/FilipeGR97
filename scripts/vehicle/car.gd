@@ -412,7 +412,7 @@ func shift_up() -> void:
 		gear = maxi(gear + 1, 1) if gear >= 0 else 0
 		shift_timer = 0.035
 		if audio and audio.has_method("on_shift"):
-			audio.on_shift()
+			audio.on_shift(true)
 
 
 func shift_down() -> void:
@@ -425,7 +425,7 @@ func shift_down() -> void:
 			gear -= 1
 			shift_timer = 0.035
 			if audio and audio.has_method("on_shift"):
-				audio.on_shift()
+				audio.on_shift(false)
 	elif gear == 1 and speed < 2.0:
 		gear = 0
 	elif gear == 0 and speed < 2.0:

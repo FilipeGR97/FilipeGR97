@@ -4,6 +4,23 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 5.1 — v0.5.1 (motores da gravação nova)
+
+- **V12, V8 e V6** refeitos a partir da gravação "F1 sons dos motores" (volta onboard de cada motor):
+  som mais cheio e brilhante, mais perto de um carro de verdade.
+- **Trocas de marcha gravadas** (V12/V8/V6): a subida toca o corte real da troca e a redução toca o "blip"
+  real, afinados pelo giro do momento. Volume da troca controlado (sem "subida" de volume).
+- **V10 mantido como no Patch 5** — o V10 gerado da gravação nova ficou estranho na troca e "piava" na
+  última marcha, então voltou ao anterior (que você aprovou).
+- Tons agudos isolados aparados nos motores novos (o que virava "piado" no giro máximo).
+- Ferramentas: `tools/build_engine_samples.py --fonte 2` (nova gravação, trocas) e `tools/engine_loop_fix.py`
+  (acha e refaz automaticamente loops com timbre fora da curva).
+
+**Teste:** escolha equipes com V12 (Falcon, Azure, Selva, Leggenda), V8 (Titan, Nova) e V6 (Aurora, Silverline,
+Granite) e diga qual motor ficou bom ou ruim — consigo voltar qualquer um para a versão anterior na hora.
+
+---
+
 ## Patch 5 — v0.5.0 (visual estilo F1 2006 + som sem estouro)
 
 Baseado no vídeo de referência (F1 2006 com mod, Silverstone): enquadramento, pista, cockpit, rodas e piloto.

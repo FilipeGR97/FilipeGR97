@@ -25,6 +25,9 @@ var _bump: Node                 # baque avulso ao subir na zebra/lombada
 var _kerb_prev := 0.0
 var _bump_cd := 0.0
 var _shift_dip := 0.0
+var _dip_rate := 12.0           # rapidez com que o motor volta depois da troca
+var _shifts := {}               # trocas gravadas deste motor: {"up": [...], "down": [...]}
+var _engine_key := ""
 var _whine_amt := 0.3
 var _pitch_k := 1.0
 var _samples := false
@@ -119,7 +122,9 @@ func _build_sample_layers(key: String) -> void:
 			for e in list:
 				var p := _player(_sample("res://assets/audio/%s/%s" % [key, e["file"]]), -80.0)
 				layers.append({"p": p, "rpm": float(e["rpm"])})
-	if EngineSamples.SHIFT_COUNT > 0:
+	_engine_key = key
+	if data.has("up") or data.has("down"):
+		_shifts = {"up": data.get("up", []), "down": data.get("down", [])}
 		_shift = _player(null, -80.0)
 
 
@@ -128,7 +133,9 @@ static func _sample(path: String) -> AudioStream:
 		return _cache[path]
 	var st: AudioStream = load(path)
 	var w := st as AudioStreamWAV
-	if w and w.loop_mode == AudioStreamWAV.LOOP_DISABLED and not path.get_file().begins_with("shift"):
+	var fn := path.get_file()
+	var one_shot := fn.begins_with("shift") or fn.begins_with("up_") or fn.begins_with("down_")
+	if w and w.loop_mode == AudioStreamWAV.LOOP_DISABLED and not one_shot:
 		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		w.loop_begin = 0
 		w.loop_end = int(w.get_length() * w.mix_rate)
@@ -136,14 +143,30 @@ static func _sample(path: String) -> AudioStream:
 	return st
 
 
-func on_shift() -> void:
+## Troca de marcha. Com trocas gravadas (Patch 5.1): toca uma subida/redução real do mesmo motor, afinada
+## pelo giro do momento, e abaixa os loops enquanto ela toca (para não somar dois motores).
+func on_shift(up := true) -> void:
 	_shift_dip = 1.0
-	if _shift and EngineSamples.SHIFT_COUNT > 0:
+	_dip_rate = 12.0
+	var list: Array = _shifts.get("up" if up else "down", [])
+	if _shift and not list.is_empty():
+		var e: Dictionary = list[_rng.randi() % list.size()]
+		var p: Node = _shift
+		p.set("stream", _sample("res://assets/audio/%s/%s" % [_engine_key, e["file"]]))
+		# subida: o recorte começa no giro de antes da troca; redução: termina no giro alto do "blip"
+		var target := car.rpm * (1.0 if up else 1.12)
+		p.set("pitch_scale", clampf(target / float(e["rpm"]), 0.75, 1.3) * _pitch_k)
+		var ev: float = Game.settings["engine_volume"]
+		var own := 0.0 if not spatial else -5.0
+		p.set("volume_db", linear_to_db(maxf(ev, 0.001)) + own - 7.5)
+		p.call("play")
+		_dip_rate = 8.0                  # loops voltam em ~0,12 s (sem "subida" de volume na troca)
+	elif _shift and EngineSamples.SHIFT_COUNT > 0:
 		var p: Node = _shift
 		p.set("stream", _sample("res://assets/audio/shift_%d.wav" % _rng.randi_range(0, EngineSamples.SHIFT_COUNT - 1)))
 		p.set("pitch_scale", _rng.randf_range(0.92, 1.08) * clampf(car.rpm / 11000.0, 0.7, 1.2))
-		var ev: float = Game.settings["engine_volume"]
-		p.set("volume_db", linear_to_db(maxf(ev, 0.001)) - (9.0 if spatial else 4.0))
+		var ev2: float = Game.settings["engine_volume"]
+		p.set("volume_db", linear_to_db(maxf(ev2, 0.001)) - (9.0 if spatial else 4.0))
 		p.call("play")
 
 
@@ -225,11 +248,11 @@ func _process(dt: float) -> void:
 	var rpm := _arpm * _live_k
 	var pitch := clampf(rpm / BASE_RPM * _pitch_k, 0.55, 2.3)
 	var thr := car.throttle_eff
-	_shift_dip = maxf(_shift_dip - dt * 12.0, 0.0)
+	_shift_dip = maxf(_shift_dip - dt * _dip_rate, 0.0)
 	var ld := clampf(thr * 1.15, 0.0, 1.0)
 	var base := linear_to_db(maxf(ev, 0.001))
 	# troca de marcha: corte curto da ignição (~70 ms), como nas gravações
-	var dip := -14.0 * _shift_dip * _shift_dip
+	var dip := (-14.0 if _dip_rate > 10.0 else -16.0) * _shift_dip * _shift_dip
 	var rpm_k := clampf((rpm - 4000.0) / 8500.0, 0.0, 1.0)
 	if _electric:
 		var sp := clampf(car.speed / 90.0, 0.0, 1.25)

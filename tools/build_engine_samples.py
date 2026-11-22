@@ -10,16 +10,25 @@ O tom mais agudo encontrado em cada motor é mapeado para TOP_RPM do jogo; os de
 
 Uso:
   pip install --target <pasta> soundfile av numpy scipy matplotlib
-  PYTHONPATH=<pasta> python tools/build_engine_samples.py <pasta_do_projeto> <pasta_debug>
+  PYTHONPATH=<pasta> python tools/build_engine_samples.py <pasta_do_projeto> <pasta_debug> [--fonte 2] [--motores helix,kestrel]
+  --fonte 2   usa a gravação "F1 sons dos motores V12 V10 V8 V6" (Sonsmotor/motores_v12_v10_v8_v6.m4a, Patch 5.1)
+  --motores   gera só esses motores; os outros continuam como estão na tabela
 Saída: assets/audio/<motor>/{on,off}_N.wav (com chunk 'smpl' de loop) + scripts/data/engine_samples.gd
 """
 import os, sys, struct
 import numpy as np
 from scipy import signal
 
-PROJ = sys.argv[1]
-DBG = sys.argv[2] if len(sys.argv) > 2 else os.path.join(PROJ, ".audio_debug")
-SRC = os.path.join(PROJ, "Sonsmotor", "videoplayback.m4a")
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+OPTS = {}
+for i, a in enumerate(sys.argv):
+    if a.startswith("--") and i + 1 < len(sys.argv):
+        OPTS[a[2:]] = sys.argv[i + 1]
+ARGS = [a for a in ARGS if a not in OPTS.values()]
+PROJ = ARGS[0]
+DBG = ARGS[1] if len(ARGS) > 1 else os.path.join(PROJ, ".audio_debug")
+FONTE = OPTS.get("fonte", "1")
+SRC = os.path.join(PROJ, "Sonsmotor", "videoplayback.m4a" if FONTE == "1" else "motores_v12_v10_v8_v6.m4a")
 SR = 44100
 TOP_RPM = 12000.0
 N_ON = 8          # loops "acelerando" por motor
@@ -32,6 +41,17 @@ ENGINES = {
     "valkyr":  {"label": "V10",              "t": (17.95, 26.15), "band": (370, 460)},
     "helix":   {"label": "V12",              "t": (26.25, 32.85), "band": (300, 380)},
 }
+# fonte 2: volta onboard de cada motor (V12 0:16, V10 1:59, V8 3:17, V6 2015 4:29)
+ENGINES2 = {
+    "helix":   {"label": "V12",              "t": (16.5, 118.5), "band": (520, 720)},
+    "valkyr":  {"label": "V10",              "t": (119.5, 196.5), "band": (360, 480)},
+    "kestrel": {"label": "V8",               "t": (197.5, 268.5), "band": (480, 650)},
+    "orion":   {"label": "V6 turbo híbrido", "t": (269.5, 301.5), "band": (140, 200)},
+}
+if FONTE == "2":
+    ENGINES = ENGINES2
+if "motores" in OPTS:
+    ENGINES = {k: v for k, v in ENGINES.items() if k in OPTS["motores"].split(",")}
 
 
 def decode(path):
@@ -60,6 +80,8 @@ def track(x, band, hop=256, win=8192):
     k0 = 3
     tr = np.zeros(S.shape[1])
     tr[k0] = f[lo + int(np.argmax(S[lo:hi, k0]))]
+    lo_lim, hi_lim = band[0] * 0.62, band[1] * 1.3
+    a_lim, b_lim = np.searchsorted(f, lo_lim), np.searchsorted(f, hi_lim)
 
     def peak(k, fc, tol):
         a = max(int((fc * (1 - tol)) / df), 1)
@@ -79,6 +101,9 @@ def track(x, band, hop=256, win=8192):
             fn2, c2 = peak(k, fc * 0.82, 0.12)
             if c2 > c * 2.5:
                 fn, c = fn2, c2
+            # gravação longa (volta inteira): se a linha escapar da faixa plausível, reencontra a mais forte
+            if not (lo_lim <= fn <= hi_lim):
+                fn = f[a_lim + int(np.argmax(S[a_lim:b_lim, k]))]
             tr[k] = fn
     return t, signal.medfilt(tr, 7), f, S
 
@@ -327,6 +352,63 @@ def write_wav(path, data, loop=True):
         fh.write(b"RIFF" + struct.pack("<I", 4 + len(ch)) + b"WAVE" + ch)
 
 
+def shift_events(x, t, tr, f_top):
+    """Trocas de marcha reais na gravação.
+    subida: o tom cai > 10% em ~50 ms (corte de ignição + marcha engatando);
+    redução: o tom sobe > 8% em ~80 ms vindo de giro caindo (o "blip" da aceleradinha).
+    Devolve [(tipo, tempo, hz)] com espaço mínimo entre eventos."""
+    dt = t[1] - t[0]
+    k3 = max(1, int(0.05 / dt))
+    k5 = max(1, int(0.08 / dt))
+    ev = []
+    last = -9.0
+    for i in range(k5 + 1, len(tr) - k5 - 1):
+        if t[i] - last < 0.35:
+            continue
+        if tr[i + k3] < tr[i] * 0.9 and tr[i] > f_top * 0.6:
+            ev.append(("up", t[i], tr[i]))
+            last = t[i]
+        elif tr[i + k5] > tr[i] * 1.08 and tr[i - k5] > tr[i] * 1.01:
+            ev.append(("down", t[i], tr[i + k5]))
+            last = t[i]
+    return ev
+
+
+def shift_clip(x, t0, before, after):
+    n0, n1 = int((t0 - before) * SR), int((t0 + after) * SR)
+    if n0 < 0 or n1 > len(x):
+        return None
+    y = x[n0:n1].copy()
+    fi, fo = int(0.006 * SR), int(0.05 * SR)
+    y[:fi] *= np.linspace(0, 1, fi)
+    y[-fo:] *= np.linspace(1, 0, fo) ** 2
+    return y
+
+
+def _read_table():
+    """Tabela atual (para manter os motores que não estão sendo gerados agora)."""
+    import re
+    path = os.path.join(PROJ, "scripts", "data", "engine_samples.gd")
+    table = {}
+    if not os.path.exists(path):
+        return table
+    src = open(path, encoding="utf-8").read()
+    for m in re.finditer(r'\t"(\w+)": \{\n(.*?)\n\t\},', src, re.S):
+        key, body = m.group(1), m.group(2)
+        d = {}
+        for kind in ("on", "off"):
+            part = body[body.index('"%s": [' % kind):]
+            part = part[:part.index("]")]
+            d[kind] = [{"file": f, "rpm": float(r)} for f, r in re.findall(r'"file": "([^"]+)", "rpm": ([0-9.]+)', part)]
+        for kind in ("up", "down"):
+            if '"%s": [' % kind in body:
+                part = body[body.index('"%s": [' % kind):]
+                part = part[:part.index("]")]
+                d[kind] = [{"file": f, "rpm": float(r)} for f, r in re.findall(r'"file": "([^"]+)", "rpm": ([0-9.]+)', part)]
+        table[key] = d
+    return table
+
+
 def rms(a):
     return float(np.sqrt(np.mean(a ** 2)) + 1e-9)
 
@@ -354,8 +436,9 @@ def main():
     os.makedirs(DBG, exist_ok=True)
     full = decode(SRC)
     full = signal.sosfilt(signal.butter(2, 35, "hp", fs=SR, output="sos"), full)
-    table = {}
-    fig, axes = plt.subplots(len(ENGINES), 1, figsize=(18, 4.5 * len(ENGINES)))
+    table = _read_table()
+    fig, axes = plt.subplots(len(ENGINES), 1, figsize=(18, 4.5 * len(ENGINES)), squeeze=False)
+    axes = axes[:, 0]
     for row, (key, cfg) in enumerate(ENGINES.items()):
         a, b = cfg["t"]
         x = full[int(a * SR):int(b * SR)]
@@ -382,6 +465,14 @@ def main():
             os.remove(os.path.join(out_dir, old))
         ons = []
         fmin, fmax = min(c[2] for c in on_c), max(c[2] for c in on_c)
+        if FONTE == "2":
+            # volta inteira: o rastreador às vezes pula para outro harmônico; descarta os extremos e limita a
+            # faixa ao que um motor de F1 varia numa volta (~1,75x entre a curva mais lenta e o giro máximo)
+            fr = np.array([c[2] for c in on_c])
+            fmax = float(np.percentile(fr, 98))
+            fmin = max(float(np.percentile(fr, 6)), fmax / 1.75)
+            on_c = [c for c in on_c if fmin * 0.97 <= c[2] <= fmax * 1.03]
+            print(f"  {key}: {len(on_c)} candidatos entre {fmin:.0f} e {fmax:.0f} Hz")
         for f_target in np.geomspace(fmin * 1.01, fmax * 0.995, N_ON):
             lp = stitched_loop(x, t, tr, on_c, f_target)
             if lp is not None:
@@ -412,6 +503,26 @@ def main():
             write_wav(os.path.join(out_dir, f"off_{i}.wav"), stereo(finish(enhance(lp * (0.17 / rms(lp))))))
             off_e.append({"file": f"off_{i}.wav", "rpm": TOP_RPM * fm / f_top, "hz": fm, "w": (t0, t1)})
         table[key] = {"on": on_e, "off": off_e}
+        # trocas de marcha gravadas (só na fonte 2, que tem volta inteira com trocas limpas)
+        if FONTE == "2":
+            evs = shift_events(x, t, tr, f_top)
+            for kind, before, after in (("up", 0.04, 0.2), ("down", 0.05, 0.26)):
+                clips = []
+                for (k2, te, hz) in evs:
+                    if k2 != kind:
+                        continue
+                    y = shift_clip(x, te, before, after)
+                    if y is not None:
+                        clips.append((rms(y), y, hz))
+                clips.sort(key=lambda c: -c[0])         # os mais nítidos (mais fortes)
+                lst = []
+                for i, (_, y, hz) in enumerate(clips[:6]):
+                    nm = f"{kind}_{i}.wav"
+                    st = stereo(y * (0.2 / rms(y)))
+                    write_wav(os.path.join(out_dir, nm), st, loop=False)
+                    lst.append({"file": nm, "rpm": TOP_RPM * hz / f_top})
+                table[key][kind] = lst
+            print(f"  {key}: trocas gravadas: {len(table[key].get('up', []))} subidas, {len(table[key].get('down', []))} reduções (de {len(evs)} eventos)")
         ax = axes[row]
         ax.pcolormesh(t + a, f, 20 * np.log10(S + 1e-7), shading="auto", vmin=-95, vmax=-20, cmap="magma")
         ax.plot(t + a, tr, "c-", lw=0.8)
@@ -428,12 +539,14 @@ def main():
         if old.startswith("shift_"):
             os.remove(os.path.join(PROJ, "assets", "audio", old))
     lines = ["class_name EngineSamples",
-             "## GERADO por tools/build_engine_samples.py a partir de Sonsmotor/videoplayback.m4a — não editar à mão.",
+             "## GERADO por tools/build_engine_samples.py (Sonsmotor/videoplayback.m4a e motores_v12_v10_v8_v6.m4a) — não editar à mão.",
              "## Para cada motor: loops gravados 'on' (acelerando) e 'off' (aliviando) e o rpm que cada um representa.",
              "", "const SHIFT_COUNT := 0", "", "const DATA := {"]
     for key, d in table.items():
         lines.append('\t"%s": {' % key)
-        for kind in ("on", "off"):
+        for kind in ("on", "off", "up", "down"):
+            if kind not in d:
+                continue
             lines.append('\t\t"%s": [' % kind)
             for e in d[kind]:
                 lines.append('\t\t\t{"file": "%s", "rpm": %.1f},' % (e["file"], e["rpm"]))
