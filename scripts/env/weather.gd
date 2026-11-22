@@ -46,19 +46,24 @@ func setup(p_kind: int, quality: int) -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = [1.0, 1.1, 1.2][kind]
+	env.ambient_light_energy = [0.62, 0.95, 1.1][kind]
+	env.ambient_light_sky_contribution = 0.85
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = [1.0, 1.15, 1.3][kind]
-	env.tonemap_white = 6.0
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_exposure = [1.08, 1.2, 1.35][kind]
+	env.tonemap_white = 10.0
 	env.ssao_enabled = q["ssao"]
-	env.ssao_radius = 1.2
-	env.ssao_intensity = 1.6
+	env.ssao_radius = 1.4
+	env.ssao_intensity = 2.4
+	env.ssao_power = 1.6
+	env.ssao_detail = 0.7
+	env.ssil_enabled = q["ssr"]
+	env.ssil_intensity = 0.8
 	env.ssr_enabled = q["ssr"]
 	env.ssr_max_steps = 48
 	env.glow_enabled = q["glow"]
-	env.glow_intensity = 0.5
-	env.glow_bloom = 0.04
+	env.glow_intensity = 0.45
+	env.glow_bloom = 0.06
 	env.glow_hdr_threshold = 1.2
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.68, 0.74, 0.82) if kind == 0 else Color(0.5, 0.53, 0.57)
@@ -66,16 +71,16 @@ func setup(p_kind: int, quality: int) -> void:
 	env.fog_aerial_perspective = 0.6
 	env.fog_sky_affect = 0.15
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.06
-	env.adjustment_saturation = [1.12, 0.92, 0.85][kind]
+	env.adjustment_contrast = 1.1
+	env.adjustment_saturation = [1.06, 0.9, 0.82][kind]
 	world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 	# ---------------- sol
 	sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-42.0, -35.0, 0.0)
-	sun.light_energy = [1.35, 0.55, 0.3][kind]
-	sun.light_color = Color(1.0, 0.96, 0.9)
+	sun.rotation_degrees = Vector3(-34.0, -35.0, 0.0)
+	sun.light_energy = [2.1, 0.7, 0.35][kind]
+	sun.light_color = Color(1.0, 0.94, 0.86)
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_max_distance = q["shadow_dist"]

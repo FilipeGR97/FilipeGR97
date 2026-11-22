@@ -48,6 +48,19 @@ func _process(dt: float) -> void:
 	# câmera do cockpit esconde o próprio capacete
 	cull_mask = 0xFFFFF & ~CarModel.HIDE_LAYER if (view == View.COCKPIT and target.is_player) else 0xFFFFF
 	var fov_set: float = Game.settings["fov"]
+	# câmera de inspeção (dev): closecam=x,y,z relativo ao carro, olhando para lookat=x,y,z
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("closecam="):
+			var v := a.substr(9).split(",")
+			var la := Vector3(0, 0.75, -0.2)
+			for a2 in OS.get_cmdline_user_args():
+				if a2.begins_with("lookat="):
+					var w := a2.substr(7).split(",")
+					la = Vector3(float(w[0]), float(w[1]), float(w[2]))
+			var cp := mxf * Vector3(float(v[0]), float(v[1]), float(v[2]))
+			global_transform = Transform3D(Basis(), cp).looking_at(mxf * la, Vector3.UP)
+			fov = 40.0
+			return
 	match view:
 		View.HELMET, View.COCKPIT, View.TCAM, View.NOSE:
 			var local := CarModel.EYE
@@ -76,7 +89,7 @@ func _process(dt: float) -> void:
 			pos += basis.y * sin(_shake_t * 61.0) * amp + basis.x * sin(_shake_t * 47.0) * amp * 0.6
 			global_transform = Transform3D(basis, pos)
 			if view == View.COCKPIT:
-				rotate_object_local(Vector3.RIGHT, -0.035)
+				rotate_object_local(Vector3.RIGHT, -0.11)
 			elif view == View.HELMET:
 				rotate_object_local(Vector3.RIGHT, -0.15)
 			fov = fov_set + (0.0 if view <= View.COCKPIT else 6.0)

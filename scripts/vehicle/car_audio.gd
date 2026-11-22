@@ -25,6 +25,7 @@ var _shift_dip := 0.0
 var _whine_amt := 0.3
 var _pitch_k := 1.0
 var _samples := false
+var _electric := false
 var _arpm := 0.0
 var _t_live := 0.0
 var _live_k := 1.0
@@ -41,18 +42,25 @@ var _rng := RandomNumberGenerator.new()
 func setup(p_car: Car, p_spatial: bool) -> void:
 	car = p_car
 	spatial = p_spatial
-	var key := String(car.team["engine"])
+	var key := Categories.engine_for(Car.category, car.team)
 	var prof: Dictionary = Teams.engine(key)["sound"]
 	_rng.seed = hash(String(car.driver.get("name", "")))
 	_phase = _rng.randf() * TAU
-	if EngineSamples.DATA.has(key) and ResourceLoader.exists("res://assets/audio/%s/on_0.wav" % key):
+	if key == "eletrico":
+		# motor elétrico: zumbido do motor/redução (sobe com a velocidade), uivo da regeneração e inversor
+		_electric = true
+		_on = _player(_tone_stream("ev_motor", [[520.0, 1.0], [1040.0, 0.42], [1560.0, 0.22], [3796.0, 0.16]]), -80.0)
+		_off = _player(_tone_stream("ev_regen", [[690.0, 1.0], [1380.0, 0.3], [2900.0, 0.14]]), -80.0)
+		_whine = _player(_tone_stream("ev_inverter", [[2600.0, 1.0], [5200.0, 0.18], [7802.0, 0.06]]), -80.0)
+	elif EngineSamples.DATA.has(key) and ResourceLoader.exists("res://assets/audio/%s/on_0.wav" % key):
 		_samples = true
 		_build_sample_layers(key)
 	else:
 		_on = _player(_engine_stream(key, prof, true), 0.0)
 		_off = _player(_engine_stream(key, prof, false), -6.0)
 	_whine_amt = float(prof.get("whine", 0.0))
-	_whine = _player(_tone_stream("whine", [[1200.0, 1.0], [2400.0, 0.35], [3600.0, 0.12]]), -18.0)
+	if not _electric:
+		_whine = _player(_tone_stream("whine", [[1200.0, 1.0], [2400.0, 0.35], [3600.0, 0.12]]), -18.0)
 	# cada equipe com afinação levemente diferente (escapamento/mapa), mesmo com o mesmo motor
 	_pitch_k = 1.0 + float((hash(String(car.team["name"])) % 7) - 3) * 0.005
 	if not spatial:
@@ -218,7 +226,14 @@ func _process(dt: float) -> void:
 	# troca de marcha: corte curto da ignição (~70 ms), como nas gravações
 	var dip := -14.0 * _shift_dip * _shift_dip
 	var rpm_k := clampf((rpm - 4000.0) / 8500.0, 0.0, 1.0)
-	if _samples:
+	if _electric:
+		var sp := clampf(car.speed / 90.0, 0.0, 1.25)
+		var own := 0.0 if not spatial else -5.0
+		var regen := clampf(car.in_brake * 1.4, 0.0, 1.0) * clampf(car.speed / 15.0, 0.0, 1.0)
+		_apply(_on, 0.2 + sp * 1.6, base + own - 16.0 + ld * 8.0 + sp * 3.0)
+		_apply(_off, 0.25 + sp * 1.3, base + own - 36.0 + regen * 20.0)
+		_apply(_whine, 0.9 + sp * 0.35 + ld * 0.05, base + own - 33.0 + ld * 7.0)
+	elif _samples:
 		_update_samples(base, ld, dip, rpm)
 	else:
 		_apply(_on, pitch, base + lerpf(-11.0, 0.0, ld) + dip + rpm_k * 3.0)
@@ -231,7 +246,8 @@ func _process(dt: float) -> void:
 	var whine_db := base - 26.0 + car.ers_deploy_kw / 350.0 * 8.0 + ld * 4.0 * _whine_amt / 0.35 + turbo
 	if _samples:
 		whine_db = -80.0
-	_apply(_whine, whine_pitch, whine_db)
+	if not _electric:
+		_apply(_whine, whine_pitch, whine_db)
 	if not spatial:
 		var slip := 0.0
 		var kerb := 0.0
@@ -241,14 +257,19 @@ func _process(dt: float) -> void:
 				# só canta quando passa do pico de aderência (escorregamento combinado > 1)
 				var comb := sqrt(pow(wh.sy / Car.AY_PEAK, 2) + pow(wh.sx / Car.KX_PEAK, 2))
 				slip = maxf(slip, clampf((comb - 1.05) * 1.2, 0.0, 1.0))
-				if wh.surface == Track.Surface.KERB or wh.surface == Track.Surface.GRAVEL:
-					kerb = 1.0
+				if wh.surface == Track.Surface.KERB:
+					kerb += 0.5
+				elif wh.surface == Track.Surface.GRAVEL:
+					kerb += 0.2
 		slip *= clampf(car.speed / 8.0, 0.0, 1.0)
 		if car.wetness > 0.3:
 			slip *= 0.3
 		_apply(_tyre, 0.9 + slip * 0.2, base - 44.0 + slip * 26.0)
 		_apply(_wind, 0.6 + car.speed / 90.0 * 0.8, base - 48.0 + clampf(car.speed / 90.0, 0.0, 1.0) * 22.0)
-		_apply(_kerb, 0.7 + car.speed / 100.0, base - 50.0 + kerb * clampf(car.speed / 25.0, 0.0, 1.0) * 30.0)
+		# batidas por segundo = v / 0,6 m  ->  pitch = (v / 0,6) / 40
+		var kp := clampf(car.speed / 0.6 / 40.0, 0.35, 3.0)
+		var kv := clampf(kerb, 0.0, 1.0) * clampf(car.speed / 12.0, 0.0, 1.0)
+		_apply(_kerb, kp, base - 60.0 + kv * 52.0 if kv > 0.01 else -80.0)
 
 
 func _apply(p: Node, pitch: float, db: float) -> void:
@@ -349,7 +370,7 @@ static func _tone_stream(ck: String, partials: Array) -> AudioStream:
 		for p in partials:
 			s += float(p[1]) * sin(TAU * float(p[0]) * t)
 		buf[i] = s
-	var st := _to_wav(buf)
+	var st := _to_wav(_crossfade(buf))
 	_cache[ck] = st
 	return st
 
@@ -377,18 +398,26 @@ static func _noise_stream(ck: String, cut: float, band: float) -> AudioStream:
 
 
 static func _kerb_stream() -> AudioStream:
+	# zebra: trem de batidas (uma por nervura). Base de 40 batidas/s; o pitch acompanha a velocidade
+	# (nervuras a cada ~0,6 m). Cada batida = baque grave do pneu + estalo seco + chocalho da carroceria.
 	if _cache.has("kerb"):
 		return _cache["kerb"]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var buf := PackedFloat32Array()
 	buf.resize(LOOP_N + XF)
-	var lp := 0.0
+	var period := RATE / 40
+	var rattle := 0.0
 	for i in LOOP_N + XF:
-		var t := float(i) / RATE
-		var env := pow(0.5 + 0.5 * sin(TAU * 40.0 * t), 3.0)
-		lp += (rng.randf_range(-1.0, 1.0) - lp) * 0.08
-		buf[i] = lp * env * 4.0 + sin(TAU * 80.0 * t) * env * 0.4
+		var ph := i % period
+		var tt := float(ph) / RATE
+		var hit := float(i / period)
+		var var_k := 0.85 + 0.3 * fposmod(sin(hit * 12.9898) * 43758.5, 1.0)
+		var thump := sin(TAU * 62.0 * tt) * exp(-tt * 55.0) * 1.0
+		var body := sin(TAU * 130.0 * tt + 0.6) * exp(-tt * 80.0) * 0.45
+		var click := rng.randf_range(-1.0, 1.0) * exp(-tt * 900.0) * 0.6
+		rattle += (rng.randf_range(-1.0, 1.0) - rattle) * 0.25
+		buf[i] = (thump + body + click) * var_k + rattle * 0.08
 	var st := _to_wav(_crossfade(buf))
 	_cache["kerb"] = st
 	return st

@@ -128,7 +128,23 @@ var aero_allowed := true          # direção de prova (VSC desativa)
 var _raw_prev_vel := Vector3.ZERO
 var wrong_way := false
 var auto_braking := false
+## categoria (definida pela corrida antes de criar os carros) e física correspondente
+static var category := "f1_2026"
+var cat: Dictionary = {}
+var ice_kw := ICE_KW
+var mguk_kw := MGUK_KW
+var dry_mass := DRY_MASS
+var cla_z := CLA_Z
+var cda_z := CDA_Z
+var cla_x := CLA_X
+var cda_x := CDA_X
+var mu0 := MU0
+var ratios: Array = RATIOS
+var active_aero := true
+var electric := false
+var top_gear := 8
 var power_mult := 1.0
+var grip_bonus := 1.0            # dificuldade alta: carro da IA otimizado (aderência extra)
 var aero_mult := 1.0
 
 var soc := SOC_MAX
@@ -190,9 +206,10 @@ func setup(p_team_index: int, p_driver: Dictionary, p_track: Track, player: bool
 	is_player = player
 	var eng := Teams.engine(String(team["engine"]))
 	power_mult = float(team.get("power", 1.0)) * float(eng.get("power", 1.0))
+	_apply_category(Categories.get_data(category))
 	aero_mult = float(team.get("aero", 1.0))
 	_rng.seed = hash(String(p_driver.get("name", "x")))
-	mass = DRY_MASS + fuel
+	mass = dry_mass + fuel
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = Vector3.ZERO
 	inertia = Vector3(1150.0, 1050.0, 260.0)
@@ -213,7 +230,7 @@ func setup(p_team_index: int, p_driver: Dictionary, p_track: Track, player: bool
 	_build_collision()
 	_build_wheels()
 	model = CarModel.new()
-	model.build(team, int(p_driver.get("num", 0)), player)
+	model.build(team, int(p_driver.get("num", 0)), player, p_driver)
 	model.position = Vector3(0.0, -COM_H, COM_Z)
 	add_child(model)
 	set_compound(compound, true)
@@ -258,6 +275,23 @@ func _build_wheels() -> void:
 
 
 # ======================================================================= API
+func _apply_category(c: Dictionary) -> void:
+	cat = c
+	ice_kw = float(c["ice_kw"])
+	mguk_kw = float(c["mguk_kw"])
+	dry_mass = float(c["mass"])
+	cla_z = float(c["cla_z"])
+	cda_z = float(c["cda_z"])
+	cla_x = float(c["cla_x"])
+	cda_x = float(c["cda_x"])
+	mu0 = float(c["mu"])
+	ratios = c["gears"]
+	active_aero = bool(c["active_aero"])
+	electric = bool(c["electric"])
+	top_gear = 1 if electric else 8
+	mass = dry_mass + fuel
+
+
 func set_compound(key: String, fresh: bool) -> void:
 	compound = key
 	var d := Tyres.get_data(key)
@@ -304,8 +338,8 @@ func repair() -> void:
 
 
 func set_fuel(kg: float) -> void:
-	fuel = kg
-	mass = DRY_MASS + fuel
+	fuel = 0.0 if electric else kg
+	mass = dry_mass + fuel
 
 
 func place(xf: Transform3D) -> void:
@@ -374,7 +408,7 @@ func on_new_lap() -> void:
 
 
 func shift_up() -> void:
-	if gear < 8 and shift_timer <= 0.0:
+	if gear < top_gear and shift_timer <= 0.0:
 		gear = maxi(gear + 1, 1) if gear >= 0 else 0
 		shift_timer = 0.035
 		if audio and audio.has_method("on_shift"):
@@ -385,8 +419,8 @@ func shift_down() -> void:
 	if shift_timer > 0.0:
 		return
 	if gear > 1:
-		var r_now: float = RATIOS[gear + 1]
-		var r_low: float = RATIOS[gear]
+		var r_now: float = ratios[gear + 1]
+		var r_low: float = ratios[gear]
 		if wheel_rpm * r_low / r_now < LIMIT_RPM - 300.0:
 			gear -= 1
 			shift_timer = 0.035
@@ -465,7 +499,7 @@ func _physics_process(dt: float) -> void:
 
 	# --- aerodinâmica ativa
 	# modo reta só em zona de reta, pista seca (direção de prova desativa no molhado) e carro andando reto
-	aero_available = track.aero_zone[t_idx] == 1 and pit_state < Pit.ENTRY and wetness < 0.4 and aero_allowed
+	aero_available = active_aero and track.aero_zone[t_idx] == 1 and pit_state < Pit.ENTRY and wetness < 0.4 and aero_allowed
 	var cornering := absf(g_force.x) > 1.0 or absf(steer_angle) > deg_to_rad(1.6) or absf(angular_velocity.dot(upv)) > 0.12
 	if aero_open:
 		if not aero_available or brake_in > 0.05 or cornering:
@@ -473,7 +507,7 @@ func _physics_process(dt: float) -> void:
 	elif want_aero and aero_available and brake_in < 0.05 and not cornering:
 		aero_open = true
 	# --- unidade de potência
-	var r_gear: float = RATIOS[gear + 1]
+	var r_gear: float = ratios[gear + 1]
 	var w_rear: float = (wheels[2].omega + wheels[3].omega) * 0.5
 	# rpm real das rodas (o motor está ligado a elas: patinando, o motor sobe de giro e bate no limitador)
 	var true_rpm := absf(w_rear * r_gear) * 60.0 / TAU
@@ -529,7 +563,7 @@ func _physics_process(dt: float) -> void:
 	var limiter_cut := rpm >= LIMIT_RPM
 	rpm = minf(rpm, LIMIT_RPM + 50.0)
 	var omega_e := rpm * TAU / 60.0
-	var p_ice := ICE_KW * 1000.0 * _ice_curve(rpm) * power_mult * throttle_eff
+	var p_ice := ice_kw * 1000.0 * _ice_curve(rpm) * power_mult * throttle_eff
 	var p_ers := _ers(dt)
 	var t_crank := 0.0
 	if engaged:
@@ -552,19 +586,20 @@ func _physics_process(dt: float) -> void:
 	var i_drive := 1.3 + (0.035 * r_gear * r_gear * 0.5 if engaged else 0.0)
 
 	# --- combustível
-	var burn := 0.0194 * throttle_eff * clampf(rpm / 11000.0, 0.3, 1.1) * fuel_mult * dt
-	fuel = maxf(fuel - burn, 0.0)
-	if fuel <= 0.0:
-		throttle_eff = 0.0
+	if not electric:
+		var burn := 0.0194 * throttle_eff * clampf(rpm / 11000.0, 0.3, 1.1) * fuel_mult * dt
+		fuel = maxf(fuel - burn, 0.0)
+		if fuel <= 0.0:
+			throttle_eff = 0.0
 	_fuel_acc += dt
 	if _fuel_acc > 0.5:
 		_fuel_acc = 0.0
-		mass = DRY_MASS + fuel
+		mass = dry_mass + fuel
 
 	# --- aerodinâmica
 	var vv := v_long * v_long
-	var cla := (CLA_X if aero_open else CLA_Z) * aero_mult * down_mult * su_cla
-	var cda := (CDA_X if aero_open else CDA_Z) * drag_mult * su_cda * (1.0 + 0.06 * dmg_wing)
+	var cla := (cla_x if aero_open else cla_z) * aero_mult * down_mult * su_cla
+	var cda := (cda_x if aero_open else cda_z) * drag_mult * su_cda * (1.0 + 0.06 * dmg_wing)
 	var down := 0.6 * cla * vv
 	var drag := 0.6 * cda * speed * speed
 	if speed > 0.5:
@@ -645,7 +680,7 @@ func _physics_process(dt: float) -> void:
 		var vx := vp.dot(wfw)
 		var vy := vp.dot(wsd)
 		# coeficiente de atrito efetivo
-		var mu := MU0 * (1.0 if w.front else REAR_GRIP) * _t_grip * wetf * float(Track.SURFACE_GRIP[w.surface])
+		var mu := mu0 * grip_bonus * (1.0 if w.front else REAR_GRIP) * _t_grip * wetf * float(Track.SURFACE_GRIP[w.surface])
 		if wi == puncture:
 			mu *= 0.35
 		var dtp := (w.temp - _t_opt) / _t_win
@@ -833,6 +868,16 @@ func _ice_curve(r: float) -> float:
 func _ers(dt: float) -> float:
 	var vk := speed * 3.6
 	var deploy := 0.0
+	if electric:
+		# carro elétrico: motor entrega a potência toda e regenera forte na frenagem
+		var dep := mguk_kw * 1000.0 * throttle_eff * power_mult if gear != 0 and not launch_hold else 0.0
+		if speed > 5.0 and brake_in > 0.05:
+			soc = minf(soc + mguk_kw * 700.0 * minf(brake_in * 1.4, 1.0) * dt, SOC_MAX)
+		ers_deploy_kw = dep / 1000.0
+		return dep
+	if mguk_kw <= 0.0:
+		ers_deploy_kw = 0.0
+		return 0.0
 	if throttle_eff > 0.2 and gear >= 1 and soc > 0.0 and not launch_hold:
 		var mode_f := 0.2
 		if ers_mode == 1:
@@ -844,7 +889,7 @@ func _ers(dt: float) -> float:
 		var taper := clampf((c1 - vk) / (c1 - c0), 0.0, 1.0)
 		if overtake_active and overtake_energy > 0.0:
 			taper = 1.0 if vk < 337.0 else 0.0
-		deploy = MGUK_KW * 1000.0 * mode_f * taper * throttle_eff * power_mult
+		deploy = mguk_kw * 1000.0 * mode_f * taper * throttle_eff * power_mult
 		var used := deploy * dt
 		if overtake_active and overtake_energy > 0.0:
 			overtake_energy = maxf(overtake_energy - used, 0.0)
@@ -855,7 +900,7 @@ func _ers(dt: float) -> float:
 	var harvest := 0.0
 	if speed > 12.0:
 		if brake_in > 0.05:
-			harvest = MGUK_KW * 1000.0 * minf(brake_in * 1.4, 1.0)
+			harvest = mguk_kw * 1000.0 * minf(brake_in * 1.4, 1.0)
 		elif throttle_eff < 0.05:
 			harvest = 120000.0
 		elif ers_mode == 0 and vk > 200.0:
@@ -893,12 +938,12 @@ func _auto_gearbox(dt: float) -> void:
 	_auto_cool = maxf(_auto_cool - dt, 0.0)
 	if shift_timer > 0.0 or _auto_cool > 0.0:
 		return
-	if (gear_rpm > 11850.0 or (rpm > 12350.0 and gear_rpm > 10800.0)) and gear < 8:
+	if (gear_rpm > 11850.0 or (rpm > 12350.0 and gear_rpm > 10800.0)) and gear < top_gear:
 		_auto_cool = 0.25
 		shift_up()
 	elif gear > 1:
-		var r_now: float = RATIOS[gear + 1]
-		var r_low: float = RATIOS[gear]
+		var r_now: float = ratios[gear + 1]
+		var r_low: float = ratios[gear]
 		var after := gear_rpm * r_low / r_now
 		var thresh := 9300.0 if in_brake > 0.2 else 7000.0
 		if gear_rpm < thresh and after < 11400.0:

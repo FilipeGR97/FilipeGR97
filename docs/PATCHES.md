@@ -4,6 +4,53 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 4 — v0.4.0 (categorias, visual e IA no 100%)
+
+### IA no 100% (você dava volta nela)
+- A IA já pilotava no limite do que o controle dela consegue (~1:26–1:27 na Serra Azul); forçar mais só fazia
+  ela rodar. Agora, de **90 a 100**, a equipe "otimiza o carro": até **+5% de aderência e +3% de potência**,
+  e a IA usa esse ganho: no 100% ela vira **1:25.2** sem rodar (antes 1:27.4).
+- "100%" agora é 100% (a escala parava em 0,99).
+- O jogo **grava suas voltas** em `voltas.csv` (pasta de dados do jogo) com o melhor tempo da IA na mesma
+  corrida — para calibrar a dificuldade com os seus tempos reais.
+
+### Categorias de carro (Corrida → Categoria)
+| Categoria | Física | Som | Visual |
+|---|---|---|---|
+| **F1 2026** | híbrido 400+350 kW, asa ativa | V6/V8/V10/V12 por equipe | halo, 18" |
+| **Clássico V10** (anos 2000) | ~930 cv, 640 kg, muita asa, sem híbrido | V10 | bico alto com pilones, asa alta, pneus com sulcos, rodas 13" |
+| **Lenda** (fim dos 80/90) | 730 cv, 600 kg, pouca asa | V12 / V10 / V8 | sem halo, santantônio, bico baixo, asa traseira enorme, pneus de perfil alto |
+| **Elétrico** (estilo Fórmula E) | 350 kW, 1 marcha, regeneração | zumbido elétrico + inversor | para-lamas, asa baixa, pneus com desenho; painel mostra **bateria** |
+
+Tempos da IA na Serra Azul: V10 1:21.6 · 2026 1:27.0 · Lenda 1:29.4 · Elétrico 1:50.6.
+
+### Equipe Leggenda (homenagem à era de ouro)
+Pintura vermelha e branca com a "seta" no sidepod, piloto brasileiro **Beto Lenda #12** com **capacete amarelo
+com faixas verde e azul**, motor V12. Disponível em todas as categorias.
+
+### Cockpit, piloto e carro
+- **Volante novo**: corpo de carbono, manoplas emborrachadas, tela com a marcha, LEDs de troca, botões,
+  seletores rotativos e borboletas. Visível na câmera "olhos do piloto" e na "atrás do piloto".
+- **Luvas** segurando as manoplas (dedos envolvendo, polegar por cima) e **braços** com o macacão da equipe
+  que dobram o cotovelo quando o volante gira (cinemática inversa).
+- **Capacete** de verdade: casco, viseira escura, faixa/listra nas cores do piloto, spoiler, HANS.
+- **Patrocinadores fictícios** (VOLTEX, ZENTRA, BRAVO TEL, AXION...) no sidepod, asa traseira, tampa do motor,
+  bico e asa dianteira.
+- Tamanho conferido com o regulamento 2026: entre-eixos 3,40 m, largura 1,90 m, rodas 18".
+
+### Visual e som
+- Iluminação nova: tonemapping AgX, sol mais forte e baixo, sombras de contato (SSAO) mais marcadas,
+  luz indireta em tela (SSIL) no gráfico Alto/Ultra, mais contraste.
+- Árvores com copa irregular e coníferas (no lugar das "árvores-pirulito").
+- **Zebra**: batidas rítmicas (uma por nervura, acompanham a velocidade), baque grave + estalo + chocalho,
+  mais forte quanto mais rodas em cima. Gravação conferida: 0 estouros.
+
+### Testes
+14/14 cenários (padrão e sua configuração), pilotagem, brita, Mônaco, corridas de 20 carros em todas as
+categorias (Elétrico: 0 toques fortes; 2026 e V10 como antes; Lenda com mais contato na largada, como a época).
+
+---
+
 ## Patch 3 — v0.3.0 (Mônaco + IA que aprende a pista)
 
 ### Circuito de Mônaco

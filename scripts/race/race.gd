@@ -78,7 +78,13 @@ func _ready() -> void:
 	track = Track.new()
 	add_child(track)
 	var tdef := Tracks.get_data(String(ses["track"]))
+	Car.category = String(ses.get("category", "f1_2026"))
+	var cat := Categories.get_data(Car.category)
 	track.build(tdef, weather.wetness, quality)
+	if Car.category != "f1_2026":
+		# perfil da linha guia / freio automático conforme a aderência do carro da categoria
+		var pm := float(cat["mass"]) + 40.0
+		track.compute_speed_profile(float(cat["profile_mu"]), -1.0, 1.2 * float(cat["cla_z"]) / (2.0 * pm), 1.2 * float(cat["cda_z"]) / (2.0 * pm))
 	if bool(Game.settings["show_racing_line"]):
 		_build_racing_line_guide()
 	_total_laps = int(ses["laps"]) if mode == Game.Mode.QUICK_RACE else 0
@@ -193,8 +199,13 @@ func _spawn_cars(ses: Dictionary, tdef: Dictionary) -> void:
 		else:
 			var drv_k := lerpf(0.985, 1.0, clampf((float(e["driver"]["skill"]) - 0.95) / 0.05, 0.0, 1.0))
 			var aero_k := 1.0 - (1.0 - float(Teams.team(int(e["team"]))["aero"])) * 0.5
-			var skill := lerpf(0.80, 0.99, diff) * drv_k * aero_k
+			var skill := lerpf(0.80, 1.0, diff) * drv_k * aero_k
 			var ai := AIDriver.new(clampf(skill, 0.8, 1.0))
+			ai.cat_k = float(Categories.get_data(Car.category)["ai_k"])
+			# 90..100: além do limite de pilotagem, a equipe "otimiza o carro" (aderência/potência)
+			var boost := clampf((diff - 0.9) / 0.1, 0.0, 1.0)
+			car.grip_bonus = 1.0 + 0.05 * boost
+			car.power_mult *= 1.0 + 0.03 * boost
 			ai.aggression = clampf(0.35 + (float(e["driver"]["skill"]) - 0.95) * 6.0 + _rng.randf_range(-0.15, 0.25), 0.2, 0.95)
 			ai.cars = cars
 			ai.race = self
@@ -534,6 +545,30 @@ func _close_sector(car: Car, t: Timing, idx: int) -> void:
 		t.sector_colors[2] = Color(0.3, 0.3, 0.33)
 
 
+## Registra cada volta do jogador (e a melhor volta da IA até agora) em user://voltas.csv
+## — serve para calibrar a dificuldade com os tempos reais de quem joga.
+func _log_player_lap(lap: float, valid: bool) -> void:
+	var ai_best := 0.0
+	for c in cars:
+		if c != player:
+			var tc: Timing = timing[c]
+			if tc.best_lap > 0.0 and (ai_best == 0.0 or tc.best_lap < ai_best):
+				ai_best = tc.best_lap
+	var path := "user://voltas.csv"
+	var new_file := not FileAccess.file_exists(path)
+	var f := FileAccess.open(path, FileAccess.READ_WRITE if not new_file else FileAccess.WRITE)
+	if f == null:
+		return
+	f.seek_end()
+	if new_file:
+		f.store_line("data;pista;modo;volta_s;valida;melhor_ia_s;dificuldade;clima;abs;tc;freio_auto;direcao_assist;cambio_auto;equipe")
+	var st: Dictionary = Game.settings
+	var ses: Dictionary = Game.session
+	f.store_line("%s;%s;%d;%.3f;%s;%.3f;%d;%d;%s;%d;%s;%s;%s;%s" % [Time.get_datetime_string_from_system(), track.key, mode, lap, valid, ai_best,
+		int(ses["difficulty"]), int(ses["weather"]), st["abs"], int(st["traction_control"]), st["auto_brake"], st["steering_assist"], st["auto_gearbox"], player.team["name"]])
+	f.close()
+
+
 func _on_line(car: Car, t: Timing) -> void:
 	var now := session_time
 	if t.laps_done <= 0:
@@ -550,6 +585,8 @@ func _on_line(car: Car, t: Timing) -> void:
 		_close_sector(car, t, 2)
 		var lap := now - t.lap_start
 		t.last_lap = lap
+		if car == player:
+			_log_player_lap(lap, t.lap_valid)
 		if t.lap_valid and (t.best_lap < 0.0 or lap < t.best_lap):
 			t.best_lap = lap
 			t.best_ms = t.lap_ms.duplicate()

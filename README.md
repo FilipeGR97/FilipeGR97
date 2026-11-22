@@ -42,6 +42,7 @@ Câmeras: atrás do piloto (padrão), olhos do piloto, T-Cam, bico, perseguiçã
 - **Clima**: seco, chuva leve e chuva forte (pista molhada reflete, spray dos carros, menos aderência).
 - **Corrida**: semáforo de largada, cronometragem por setores, delta para a melhor volta, intervalos, limites de pista com penalidade,
   bandeira quadriculada e tabela de resultado.
+- **Categorias**: F1 2026 híbrido, Clássico V10, Lenda (anos 80/90, sem halo) e Elétrico (estilo Fórmula E) — física, modelo e som próprios.
 - **Circuitos**: Autódromo Serra Azul (fictício) e **Circuito de Mônaco** (circuito de rua: guard-rail, prédios, porto, túnel).
 - **IA**: 19 adversários que **aprendem cada trecho da pista** (pré-treinados em `data/ai/`, ajustam durante a corrida),
   defendem por dentro, atacam freando mais tarde, estratégia de pit e erros ocasionais.

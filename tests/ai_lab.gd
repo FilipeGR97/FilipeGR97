@@ -50,8 +50,18 @@ func _initialize() -> void:
 		if a.begins_with("start="): start_k = float(a.substr(6))
 	track = Track.new()
 	root.add_child(track)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("margin="): track.line_margin = float(a.substr(7))
 	var t0 := Time.get_ticks_msec()
+	var catk := -1.0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("cat="): Car.category = a.substr(4)
+		if a.begins_with("catk="): catk = float(a.substr(5))
 	track.build(Tracks.get_data(key), wet, 0)
+	if Car.category != "f1_2026":
+		var cc := Categories.get_data(Car.category)
+		var pm := float(cc["mass"]) + 40.0
+		track.compute_speed_profile(float(cc["profile_mu"]), -1.0, 1.2 * float(cc["cla_z"]) / (2.0 * pm), 1.2 * float(cc["cda_z"]) / (2.0 * pm))
 	if mu > 0.0:
 		track.compute_speed_profile(mu)
 	if start_k > 0.0:
@@ -73,6 +83,11 @@ func _initialize() -> void:
 			c.track_temp = 25.0
 			c.set_compound(Tyres.best_for(wet), true)
 		var ai := AIDriver.new(skill)
+		ai.cat_k = catk if catk > 0.0 else float(Categories.get_data(Car.category)["ai_k"])
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("boost="):
+				c.grip_bonus = 1.0 + 0.05 * float(a.substr(6))
+				c.power_mult *= 1.0 + 0.03 * float(a.substr(6))
 		ai.learn_rate = 1.0 if learn else 0.0
 		for a in OS.get_cmdline_user_args():
 			pass

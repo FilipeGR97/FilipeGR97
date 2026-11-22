@@ -65,7 +65,9 @@ func _ready() -> void:
 	ver.position = Vector2(60, -40)
 	_ui.add_child(ver)
 	_show_main()
-	if Game.dev_teams_screen:
+	if OS.get_cmdline_user_args().has("setupscreen"):
+		_show_setup(Game.Mode.QUICK_RACE)
+	elif Game.dev_teams_screen:
 		_show_teams()
 
 
@@ -156,9 +158,10 @@ func _set_car(t: int) -> void:
 	_team = t
 	if _car:
 		_car.queue_free()
+	Car.category = String(Game.session.get("category", "f1_2026"))
 	_car = CarModel.new()
 	var team := Teams.team(t)
-	_car.build(team, int(team["drivers"][clampi(_driver, 0, 1)]["num"]), false)
+	_car.build(team, int(team["drivers"][clampi(_driver, 0, 1)]["num"]), false, team["drivers"][clampi(_driver, 0, 1)])
 	_car.set_compound(Tyres.get_data(String(Game.session["start_compound"]))["color"])
 	_car_holder.add_child(_car)
 
@@ -313,6 +316,9 @@ func _show_setup(mode: int) -> void:
 	Game.session["mode"] = mode
 	var s: Dictionary = Game.session
 	_header(["CORRIDA RÁPIDA", "CONTRA O RELÓGIO", "TREINO LIVRE"][mode])
+	_option("Categoria", Categories.ORDER.map(func(k): return Categories.get_data(k)["name"]), Categories.ORDER.find(String(s.get("category", "f1_2026"))), func(i):
+		s["category"] = Categories.ORDER[i]
+		_set_car(_team))
 	_team_picker()
 	_option("Circuito", Tracks.keys().map(func(k): return Tracks.get_data(k)["name"]), Tracks.keys().find(s["track"]), func(i): s["track"] = Tracks.keys()[i])
 	if mode == Game.Mode.QUICK_RACE:

@@ -28,8 +28,13 @@ void fragment() {
 	} else if (pattern < 1.5) {
 		if (fx < 0.0 && y > 0.55) c = secondary;
 		if (abs(fx - 0.0) < 0.05 && y > 0.5) c = accent;
-	} else {
+	} else if (pattern < 2.5) {
 		if (y < 0.48 + 0.04 * fx) c = secondary;
+	} else {
+		// homenagem anos 80: branco em cima, vermelho em baixo com a "seta" no sidepod
+		c = secondary;
+		if (y < 0.47 + 0.03 * fx) c = primary;
+		if (z > 0.22 && fx > -0.9 && fx < 0.7 && y < 0.62 - abs(fx + 0.1) * 0.22) c = primary;
 	}
 	// parte de baixo e assoalho em fibra
 	if (y < 0.32 + 0.04 * fx && fx < 1.35) c = vec3(0.025);

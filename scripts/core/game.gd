@@ -9,6 +9,7 @@ enum Mode { QUICK_RACE, TIME_TRIAL, PRACTICE }
 var session := {
 	"mode": Mode.QUICK_RACE,
 	"track": "serra_azul",
+	"category": "f1_2026",     # categoria de carro (scripts/data/categories.gd)
 	"team": 0,
 	"driver": 0,
 	"laps": 5,
@@ -73,6 +74,8 @@ func _ready() -> void:
 			settings["graphics"] = int(a.substr(4))
 		elif a.begins_with("mode="):
 			session["mode"] = int(a.substr(5))
+		elif a.begins_with("cat="):
+			session["category"] = a.substr(4)
 		elif a.begins_with("track="):
 			session["track"] = a.substr(6)
 		elif a.begins_with("laps="):

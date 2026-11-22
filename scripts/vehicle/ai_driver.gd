@@ -23,6 +23,7 @@ var _gap_car: Car = null
 var _follow_car: Car = null
 var _follow_brake := 0.0
 var _strat_t := 0.0
+var cat_k := 1.0             # ajuste de ritmo da categoria (conhecimento treinado no F1 2026)
 var pace_mod := 1.0          # variação de ritmo volta a volta (consistência do piloto)
 var _lap_seen := -1
 var _pit_stuck := 0.0
@@ -80,7 +81,12 @@ func drive(car: Car, dt: float) -> void:
 		var fd := _gap(car, _follow_car)
 		if fd > 0.0 and fd < 60.0 and absf(_follow_car.lateral - car.lateral) < 2.4:
 			# na chuva freia-se menos: distância maior e reação mais cedo
-			var wetf := 1.0 + 0.7 * car.wetness
+			# carro que freia menos (chuva, pouca asa: lenda/elétrico) precisa de mais distância
+			var brk_k := sqrt(clampf(car.cla_z / 4.0, 0.3, 1.3)) * car.mu0 / 1.8
+			var wetf := (1.0 + 0.7 * car.wetness) / clampf(brk_k, 0.5, 1.1)
+			# primeira volta (pelotão embolado, pneu frio): mais cautela
+			if race and race.has_method("race_time") and race.race_time() < 35.0:
+				wetf *= 1.45
 			var safe := (5.0 + spd * 0.11) * wetf
 			var fcap := _follow_car.speed + (fd - safe) * 0.7
 			# o da frente está freando: antecipa (como o piloto que vê a luz de freio)
@@ -138,7 +144,7 @@ func drive(car: Car, dt: float) -> void:
 	var tavg: float = (car.wheels[0].temp + car.wheels[1].temp + car.wheels[2].temp + car.wheels[3].temp) * 0.25
 	var dtp: float = (tavg - float(tdat["t_opt"])) / float(tdat["t_win"])
 	var temp_g := 1.0 - (0.18 * minf(dtp * dtp, 1.0) if dtp < 0.0 else 0.12 * minf(dtp * dtp, 1.3))
-	var vs := skill * pace_mod * wet_k * tyre_k * sqrt(minf(temp_g / 0.97, 1.0))
+	var vs := skill * pace_mod * wet_k * tyre_k * sqrt(minf(temp_g / 0.97, 1.0)) * sqrt(car.grip_bonus) * cat_k
 	var ahead := tr.idx(car.t_idx + int(maxf(spd * 0.18, 2.0) / tr.ds) + 1)
 	var i_near := tr.idx(car.t_idx + 1)
 	var v_target := tr.speed_prof[ahead] * tr.ai_k[ahead] * vs
@@ -290,7 +296,9 @@ func _update_traffic(car: Car) -> float:
 	_follow_car = ahead
 	if ahead:
 		var d := _gap(car, ahead)
-		var safe := (5.0 + car.speed * 0.11) * (1.0 + 0.7 * car.wetness)
+		var safe := (5.0 + car.speed * 0.11) * (1.0 + 0.7 * car.wetness) / clampf(sqrt(clampf(car.cla_z / 4.0, 0.3, 1.3)) * car.mu0 / 1.8, 0.5, 1.1)
+		if race and race.has_method("race_time") and race.race_time() < 35.0:
+			safe *= 1.45
 		if d < safe + 20.0:
 			cap = ahead.speed + (d - safe) * 0.7
 		var closing := car.speed - ahead.speed

@@ -43,6 +43,8 @@ const AI_K_MIN := 0.80
 const AI_K_MAX := 1.30
 const PROF_KQ := 1.2 * 4.0 / (2.0 * 800.0)    # downforce/massa (por v²)
 const PROF_KD := 1.2 * 1.35 / (2.0 * 800.0)   # arrasto/massa (por v²)
+var prof_kq := PROF_KQ
+var prof_kd := PROF_KD
 var aero_zone := PackedByteArray()
 var aero_zones: Array = []           # [[s_ini, s_fim], ...]
 var overtake_detect_s := 0.0
@@ -55,6 +57,7 @@ var pit_lane_off := 0.0
 var pit_box_off := 0.0
 var pit_speed := 22.2
 var pit_taper := PIT_TAPER
+var line_margin := 1.3                 # sobrescrito por --linemargin (testes)
 var street := false                  # circuito de rua: muros colados, prédios, mar
 var box_u: Array = []                # posição (u ao longo do pit) de cada equipe
 
@@ -297,7 +300,8 @@ func s_of(p: Vector3, i: int) -> float:
 
 # ---------------------------------------------------------------- traçado ideal
 func _compute_racing_line() -> void:
-	var lim := half_width - 1.3
+	# margem do centro do carro até a borda: o traçado usa a pista toda (pneu raspando a zebra)
+	var lim := half_width - float(def.get("line_margin", line_margin))
 	var step := 4
 	var m := n / step
 	var o := PackedFloat32Array()
@@ -343,12 +347,14 @@ func line_point(i: int, extra := 0.0) -> Vector3:
 ## Perfil de velocidade máxima (m/s) ao longo do traçado ideal.
 ## mu = aderência lateral efetiva do carro; a frenagem usa a capacidade medida do carro
 ## (tests/car_limits.gd: ~1,9 g a 100 km/h, ~5 g a 300 km/h).
-func compute_speed_profile(mu: float, mub := -1.0) -> void:
+func compute_speed_profile(mu: float, mub := -1.0, p_kq := PROF_KQ, p_kd := PROF_KD) -> void:
 	var g := 9.81
 	prof_mu = mu
-	prof_mub = mub if mub > 0.0 else 1.38
-	var kq := PROF_KQ
-	var kd := PROF_KD
+	prof_mub = mub if mub > 0.0 else mu * 0.92
+	prof_kq = p_kq
+	prof_kd = p_kd
+	var kq := p_kq
+	var kd := p_kd
 	var vtop := 95.0
 	var p := PackedVector2Array()
 	p.resize(n)
@@ -440,12 +446,12 @@ func ai_learn(i: int, delta: float, back := 0) -> void:
 ## ajustada às medições de tests/car_limits.gd. Usada pela IA para frear no limite.
 func brake_cap(v: float) -> float:
 	var mub := prof_mub * clampf(1.12 - 0.0022 * v, 0.9, 1.1)
-	return mub * (9.81 + PROF_KQ * v * v) + PROF_KD * v * v
+	return mub * (9.81 + prof_kq * v * v) + prof_kd * v * v
 
 
 ## Aceleração lateral máxima (m/s²) a uma velocidade v.
 func lat_cap(v: float) -> float:
-	return prof_mu * (9.81 + PROF_KQ * v * v)
+	return prof_mu * (9.81 + prof_kq * v * v)
 
 
 func _compute_aero_zones() -> void:
@@ -1400,39 +1406,31 @@ func _trees(rng: RandomNumberGenerator) -> void:
 		var sc := rng.randf_range(0.7, 1.5)
 		var t := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.85, 1.3), sc)), Vector3(p.x, -0.6, p.y))
 		xforms.append(t)
-	var trunk := CylinderMesh.new()
-	trunk.top_radius = 0.25
-	trunk.bottom_radius = 0.35
-	trunk.height = 4.0
-	trunk.radial_segments = 6
-	var crown := SphereMesh.new()
-	crown.radius = 3.2
-	crown.height = 7.0
-	crown.radial_segments = 10
-	crown.rings = 6
+	# árvores: folhosas de copa irregular (vários "tufos") e coníferas, com tronco e variação de cor
 	var tm := StandardMaterial3D.new()
-	tm.albedo_color = Color(0.3, 0.22, 0.15)
+	tm.albedo_color = Color(0.25, 0.18, 0.12)
+	tm.roughness = 1.0
 	var cm := StandardMaterial3D.new()
-	cm.albedo_color = Color(0.13, 0.27, 0.09)
+	cm.vertex_color_use_as_albedo = true
 	cm.roughness = 0.95
-	trunk.material = tm
-	crown.material = cm
-	for part in 2:
+	cm.albedo_texture = _noise_tex
+	cm.uv1_triplanar = true
+	cm.uv1_scale = Vector3(0.6, 0.6, 0.6)
+	var kinds := [_tree_mesh(false, tm, cm), _tree_mesh(true, tm, cm)]
+	for kind in 2:
+		var list: Array = []
+		for k in xforms.size():
+			if (k % 3 == 0) == (kind == 1):
+				list.append(xforms[k])
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_colors = part == 1
-		mm.mesh = trunk if part == 0 else crown
-		mm.instance_count = xforms.size()
-		for k in xforms.size():
-			var t: Transform3D = xforms[k]
-			if part == 0:
-				mm.set_instance_transform(k, t * Transform3D(Basis(), Vector3(0, 2.0, 0)))
-			else:
-				mm.set_instance_transform(k, t * Transform3D(Basis(), Vector3(0, 6.0, 0)))
-				mm.set_instance_color(k, Color.from_hsv(rng.randf_range(0.22, 0.32), rng.randf_range(0.5, 0.75), rng.randf_range(0.6, 1.0)))
-		if part == 1:
-			cm.vertex_color_use_as_albedo = true
-			cm.albedo_color = Color(0.25, 0.42, 0.17)
+		mm.use_colors = true
+		mm.mesh = kinds[kind]
+		mm.instance_count = list.size()
+		for k in list.size():
+			mm.set_instance_transform(k, list[k])
+			var hue := rng.randf_range(0.2, 0.3) if kind == 0 else rng.randf_range(0.28, 0.36)
+			mm.set_instance_color(k, Color.from_hsv(hue, rng.randf_range(0.45, 0.7), rng.randf_range(0.55, 0.9)))
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		add_child(mmi)
@@ -1658,6 +1656,47 @@ func _tunnels() -> void:
 				li.omni_range = 26.0
 				li.shadow_enabled = false
 				add_child(li)
+
+
+## Malha de árvore: folhosa (tronco + 5 tufos esféricos) ou conífera (tronco + 3 cones).
+func _tree_mesh(conifer: bool, trunk_mat: Material, crown_mat: Material) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	var trunk := CylinderMesh.new()
+	trunk.top_radius = 0.18
+	trunk.bottom_radius = 0.32
+	trunk.height = 4.5 if not conifer else 3.0
+	trunk.radial_segments = 6
+	var m := ArrayMesh.new()
+	st.create_from(trunk, 0)
+	var xf := Transform3D(Basis(), Vector3(0, trunk.height * 0.5, 0))
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.append_from(trunk, 0, xf)
+	m = st.commit()
+	m.surface_set_material(0, trunk_mat)
+	var cs := SurfaceTool.new()
+	cs.begin(Mesh.PRIMITIVE_TRIANGLES)
+	if conifer:
+		for k in 3:
+			var cone := CylinderMesh.new()
+			cone.top_radius = 0.0
+			cone.bottom_radius = 2.4 - k * 0.6
+			cone.height = 3.6 - k * 0.6
+			cone.radial_segments = 9
+			cone.rings = 1
+			cs.append_from(cone, 0, Transform3D(Basis(), Vector3(0, 3.4 + k * 1.9, 0)))
+	else:
+		for t in [[0, 6.2, 0, 2.6], [1.5, 5.4, 0.4, 1.9], [-1.4, 5.6, -0.3, 2.0], [0.3, 5.2, 1.5, 1.8], [-0.2, 7.4, -0.6, 1.7]]:
+			var sp := SphereMesh.new()
+			sp.radius = t[3]
+			sp.height = t[3] * 1.8
+			sp.radial_segments = 9
+			sp.rings = 5
+			cs.append_from(sp, 0, Transform3D(Basis(), Vector3(t[0], t[1], t[2])))
+	cs.generate_normals()
+	var crown := cs.commit()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, crown.surface_get_arrays(0))
+	m.surface_set_material(1, crown_mat)
+	return m
 
 
 func _compute_minimap() -> void:

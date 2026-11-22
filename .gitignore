@@ -15,3 +15,7 @@ Godot_v*.exe
 
 # gravações-fonte do usuário (os loops gerados ficam em assets/audio)
 Sonsmotor/
+
+# jogos/arquivos de terceiros (nunca versionar)
+*.pkg
+*.iso

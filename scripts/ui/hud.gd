@@ -464,7 +464,10 @@ func _update_dash() -> void:
 	else:
 		_ot_lbl.text = ""
 	var per_lap: float = race.fuel_per_lap()
-	_fuel_lbl.text = "COMB %.1f kg (%+.1f v)" % [car.fuel, car.fuel / maxf(per_lap, 0.01) - race.laps_remaining(car)] if race.is_race() else "COMB %.1f kg" % car.fuel
+	if car.electric:
+		_fuel_lbl.text = "BATERIA %d%%  REGEN %s" % [int(car.soc / Car.SOC_MAX * 100.0), "ATIVA" if car.in_brake > 0.05 else "—"]
+	else:
+		_fuel_lbl.text = "COMB %.1f kg (%+.1f v)" % [car.fuel, car.fuel / maxf(per_lap, 0.01) - race.laps_remaining(car)] if race.is_race() else "COMB %.1f kg" % car.fuel
 	_bias_lbl.text = "FREIO %.1f%% DIANT." % (car.brake_bias * 100.0)
 	var td := Tyres.get_data(car.compound)
 	_tyre_lbl.text = "%s (%s)\n%d voltas\ndesgaste %d%%\n%.0f°C méd." % [td["name"], td["label"], car.tyre_laps, int(round(car.avg_wear() * 100.0)), (car.wheels[0].temp + car.wheels[1].temp + car.wheels[2].temp + car.wheels[3].temp) / 4.0]

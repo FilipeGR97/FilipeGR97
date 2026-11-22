@@ -21,6 +21,8 @@ const ENGINES := {
 	"helix": {"name": "Helix", "type": "V12", "model": "Helix HX-12", "layout": "V12 a 65°", "displacement": "3,5 L", "aspiration": "Aspirado + MGU-K", "rpm_max": 17500, "power": 0.985, "sound": {"cyl": 12,
 		"orders": [2.0, 6.0, 12.0, 18.0, 24.0, 36.0], "harm": [0.10, 0.25, 1.00, 0.30, 0.60, 0.30],
 		"drive": 2.2, "noise": 0.12, "rasp": 0.50, "whine": 0.0, "uneven": 0.0}},
+	"eletrico": {"name": "Volta", "type": "Elétrico", "model": "Volta E-350", "layout": "Motor elétrico traseiro", "displacement": "—", "aspiration": "Bateria de alta tensão", "rpm_max": 20000, "power": 1.000, "sound": {"cyl": 0,
+		"orders": [1.0], "harm": [1.0], "drive": 1.0, "noise": 0.0, "rasp": 0.0, "whine": 1.0, "uneven": 0.0}},
 }
 
 const TEAMS := [
@@ -54,6 +56,11 @@ const TEAMS := [
 	{"name": "Selva Racing", "chassis": "SR-26", "nick": "Jaguaré", "base": "Indaiatuba (BRA)", "short": "SEL", "engine": "helix", "power": 0.98, "aero": 0.975,
 		"primary": Color(0.12, 0.12, 0.12), "secondary": Color(0.0, 0.85, 0.25), "accent": Color(1.0, 0.85, 0.0),
 		"drivers": [{"name": "Caio Andrade", "code": "AND", "num": 5, "skill": 0.962}, {"name": "Felipe Rocha", "code": "ROC", "num": 27, "skill": 0.958}]},
+	# homenagem à era de ouro dos anos 80/90: vermelho e branco, piloto brasileiro de capacete amarelo
+	{"name": "Leggenda Racing", "chassis": "LG-88", "nick": "Saudade", "base": "São Paulo (BRA)", "short": "LEG", "engine": "helix", "power": 1.000, "aero": 1.000, "legend": true,
+		"primary": Color(0.93, 0.16, 0.12), "secondary": Color(0.97, 0.97, 0.97), "accent": Color(0.04, 0.04, 0.05),
+		"drivers": [{"name": "Beto Lenda", "code": "LEN", "num": 12, "skill": 1.0, "helmet": [Color(1.0, 0.84, 0.0), Color(0.0, 0.55, 0.22), Color(0.08, 0.24, 0.72)]},
+			{"name": "Henri Laval", "code": "LAV", "num": 11, "skill": 0.99, "helmet": [Color(0.95, 0.95, 0.97), Color(0.1, 0.2, 0.6), Color(0.85, 0.1, 0.1)]}]},
 ]
 
 
