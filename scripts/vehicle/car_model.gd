@@ -17,6 +17,25 @@ const W_F := 0.30
 const W_R := 0.38
 
 static var _cache: Dictionary = {}
+
+## Modelos 3D externos com licença livre (CC-BY 4.0, créditos em assets/CREDITOS.md), por variante.
+## pivot = ponto do modelo original que vira a origem (meio entre os eixos, no chão); flip = frente em +Z.
+## hide = peças escondidas (rodas/pneus/volante originais: o jogo usa os próprios, que giram e esterçam).
+## cockpit = deslocamento do piloto/volante/câmeras em relação ao carro procedural.
+const EXT_MODELS := {
+	"2026": {"path": "res://assets/cars_src/sf90/SF90.fbx", "scale": 1.16, "pivot": Vector3(0.0, 0.0917, -0.185), "flip": true,
+		"hide": ["Rim ", "Tire ", "Decal", "Decail", "Steering Wheel", "Buttons", "Grip Button", "Ferrari Button", "Gears", "Its for something"],
+		"wheel_z": 1.8, "cockpit": Vector3(0.0, -0.13, -0.365), "nosecam": Vector3(0.0, 0.74, -1.45), "mirror": Vector3(0.47, 0.7, -0.62),
+		"paint": {"Main": ["res://assets/cars_src/sf90/textures/SF90_Main_", Color(0.808, 0.043, 0.055)]},
+		# onde ficavam as marcas reais (peças de decalque do modelo) -> nossos patrocinadores fictícios
+		"slots": {"Decal Shell Left": "title", "Decal Shell Right": "title", "Decal Ray Ban Left": "second", "Decal Ray Ban Right": "second",
+			"Decal UPS Left": "third", "Decal UPS Right": "third", "Decal Hublot Left": "fourth", "Decal Hublot Right": "fourth",
+			"Decal Rear Wing": "title", "Decal Shell V-Power Rear Left": "title", "Decal Shell V-Power Rear Right": "title",
+			"Decal Rear Wing Left": "second", "Decal Rear Wing Right": "second", "Decal Kaspersky Front Left": "second",
+			"Decal Kaspersky Front Right": "second", "Decal Shell V-Power Front Left": "third", "Decal Shell V-Power Front Right": "third",
+			"Decal Number 5 Front": "number", "Decal Number 5 Left": "number", "Decal Number 5 Right": "number",
+			"Decal Weichai": "fourth", "Decal Lenovo Left": "tyre", "Decal Lenovo Right": "tyre"}},
+}
 static var _mats: Dictionary = {}
 
 var wheel_root: Array = []
@@ -24,6 +43,11 @@ var wheel_steer: Array = []
 var wheel_spin: Array = []
 var body: MeshInstance3D
 var _nut_mat: StandardMaterial3D
+var ext: Dictionary = {}          # configuração do modelo externo em uso (vazio = procedural)
+var cam_off := Vector3.ZERO        # deslocamento das câmeras de cockpit (modelo externo)
+var nose_cam := NOSECAM
+var mirror_pos := Vector3(0.53, 0.735, -0.676)   # espelho direito (o esquerdo é o simétrico)
+var _wheel_z := 1.7
 var _tyres: Array = []          # MeshInstance3D dos pneus (cor do composto por instância)
 var _compound_col := Color(1.0, 0.82, 0.05)
 var _brake_mat: StandardMaterial3D
@@ -474,8 +498,17 @@ static func _rim_tex() -> ImageTexture:
 # ======================================================================= construção
 func build(team: Dictionary, number: int, player: bool, driver: Dictionary = {}) -> void:
 	var custom := _try_custom_model(team)
+	var vk := String(Categories.get_data(Car.category)["model"])
 	if custom:
 		add_child(custom)
+	elif EXT_MODELS.has(vk) and ResourceLoader.exists(EXT_MODELS[vk]["path"]) and not OS.get_cmdline_user_args().has("procedural"):
+		variant = vk
+		ext = EXT_MODELS[vk]
+		add_child(_ext_model(ext, team, number, player))
+		_wheel_z = float(ext["wheel_z"])
+		cam_off = ext["cockpit"]
+		nose_cam = ext.get("nosecam", NOSECAM)
+		mirror_pos = ext.get("mirror", mirror_pos)
 	else:
 		variant = String(Categories.get_data(Car.category)["model"])
 		if not _cache.has("body_" + variant):
@@ -487,7 +520,8 @@ func build(team: Dictionary, number: int, player: bool, driver: Dictionary = {})
 		body.set_instance_shader_parameter("secondary", team["secondary"])
 		body.set_instance_shader_parameter("accent", team["accent"])
 		_livery_style(body, team)
-	_build_moving_parts(team)
+	if ext.is_empty():
+		_build_moving_parts(team)
 	# porca central das rodas: cor de destaque da equipe (como nos carros reais)
 	_nut_mat = StandardMaterial3D.new()
 	var nc: Color = team["accent"]
@@ -497,9 +531,153 @@ func build(team: Dictionary, number: int, player: bool, driver: Dictionary = {})
 	_nut_mat.metallic = 0.7
 	_nut_mat.roughness = 0.3
 	_build_wheels()
+	var n0 := get_child_count()
 	_build_cockpit(team, player, driver)
+	if not ext.is_empty():
+		# piloto, volante e braços vão juntos para o cockpit do modelo externo
+		var drv := Node3D.new()
+		drv.position = cam_off
+		var moved := []
+		for i in range(n0, get_child_count()):
+			moved.append(get_child(i))
+		add_child(drv)
+		for nd in moved:
+			remove_child(nd)
+			drv.add_child(nd)
+		return
 	_build_lights()
 	_build_number(number, team)
+
+
+## Instancia o modelo externo: gira (frente em -Z), escala, apoia no chão e esconde as peças da lista.
+func _ext_model(cfg: Dictionary, team: Dictionary = {}, number := 0, player := false) -> Node3D:
+	var ps: PackedScene = load(cfg["path"])
+	var inst := ps.instantiate() as Node3D
+	var sc := float(cfg["scale"])
+	var b := Basis(Vector3.UP, PI if cfg.get("flip", false) else 0.0).scaled(Vector3(sc, sc, sc))
+	var holder := Node3D.new()
+	holder.transform = Transform3D(b, -(b * (cfg["pivot"] as Vector3)))
+	holder.add_child(inst)
+	var paint: Dictionary = cfg.get("paint", {})
+	for nd in _all_nodes(inst):
+		if not (nd is MeshInstance3D):
+			continue
+		var mi := nd as MeshInstance3D
+		var slot: String = cfg.get("slots", {}).get(String(mi.name), "")
+		if slot != "" and not team.is_empty():
+			_ext_sponsor(holder.transform * _chain_xf(mi, inst) * mi.get_aabb(), slot, team, number)
+		for pre in cfg["hide"]:
+			if String(mi.name).begins_with(pre):
+				mi.visible = false
+		if not mi.visible:
+			continue
+		# adversários trocam para versões mais simples da malha mais cedo (o modelo tem ~650 mil triângulos)
+		mi.lod_bias = 1.0 if player else 0.45
+		# material original -> nosso shader (texturas originais + pintura da nossa equipe)
+		var to_car := holder.transform * _chain_xf(mi, inst)
+		for si in mi.mesh.get_surface_count():
+			var m0 := mi.mesh.surface_get_material(si)
+			var mname := m0.resource_name if m0 else ""
+			if not paint.has(mname):
+				continue
+			var key := "extmat_%s_%s_%d" % [cfg["path"], String(inst.get_path_to(mi)), si]
+			if not _cache.has(key):
+				var sm := ShaderMaterial.new()
+				sm.shader = load("res://shaders/ext_paint.gdshader")
+				var pre2: String = paint[mname][0]
+				sm.set_shader_parameter("base_tex", load(pre2 + "BaseColor.png"))
+				sm.set_shader_parameter("normal_tex", load(pre2 + "Normal.png"))
+				sm.set_shader_parameter("rough_tex", load(pre2 + "Roughness.png"))
+				sm.set_shader_parameter("metal_tex", load(pre2 + "Metallic.png"))
+				sm.set_shader_parameter("paint_ref", paint[mname][1])
+				sm.set_shader_parameter("to_car", Projection(to_car))
+				_cache[key] = sm
+			mi.set_surface_override_material(si, _cache[key])
+		if not team.is_empty():
+			mi.set_instance_shader_parameter("primary", team["primary"])
+			mi.set_instance_shader_parameter("secondary", team["secondary"])
+			mi.set_instance_shader_parameter("accent", team["accent"])
+			_livery_style(mi, team)
+	return holder
+
+
+## Patrocinador fictício no lugar de uma marca real: texto plano encostado na superfície da peça de
+## decalque original (caixa no espaço do carro: o eixo mais fino é a normal da superfície).
+func _ext_sponsor(box: AABB, slot: String, team: Dictionary, number: int) -> void:
+	var h := absi(hash(String(team["name"])))
+	var names := {
+		"title": String(team.get("title", SPONSORS[h % SPONSORS.size()])),
+		"second": SPONSORS[(h / 7 + 3) % SPONSORS.size()],
+		"third": SPONSORS[(h / 13 + 7) % SPONSORS.size()],
+		"fourth": SPONSORS[(h / 17 + 11) % SPONSORS.size()],
+		"tyre": "VELTRA",
+		"number": str(number),
+	}
+	var text: String = names[slot]
+	var sz := box.size
+	var c := box.get_center()
+	var axis := 0
+	if sz.y <= sz.x and sz.y <= sz.z:
+		axis = 1
+	elif sz.z <= sz.x and sz.z <= sz.y:
+		axis = 2
+	var nrm := Vector3.ZERO
+	var along := 0.0
+	var tall := 0.0
+	if axis == 0:
+		nrm = Vector3(signf(c.x) if absf(c.x) > 0.01 else 1.0, 0, 0)
+		along = sz.z
+		tall = sz.y
+	elif axis == 1:
+		nrm = Vector3.UP
+		along = maxf(sz.x, sz.z)
+		tall = minf(sz.x, sz.z)
+	else:
+		nrm = Vector3(0, 0, signf(c.z) if absf(c.z) > 0.01 else 1.0)
+		along = sz.x
+		tall = sz.y
+	var right: Vector3
+	var up: Vector3
+	if axis == 1:
+		# superfície de cima: legível para quem olha de trás/de cima
+		up = Vector3.FORWARD
+		right = Vector3.RIGHT
+	else:
+		right = Vector3.UP.cross(nrm).normalized()
+		up = nrm.cross(right).normalized()
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 96
+	l.outline_size = 10
+	l.outline_modulate = Color(0, 0, 0, 0.45)
+	l.modulate = Color(0.97, 0.97, 0.97)
+	l.double_sided = false
+	l.shaded = true
+	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	l.visibility_range_end = 60.0
+	# cabe na largura e na altura da área original
+	var est_w := 0.6 * text.length() * 96.0
+	l.pixel_size = clampf(minf(along * 0.85 / est_w, tall * 0.75 / 96.0), 0.0004, 0.004)
+	l.transform = Transform3D(Basis(right, up, nrm), c + nrm * (sz[axis] * 0.5 + 0.006))
+	add_child(l)
+
+
+## Transformação de um nó até um ancestral (sem precisar estar na árvore).
+static func _chain_xf(n: Node, top: Node) -> Transform3D:
+	var t := Transform3D()
+	var c := n
+	while c != null and c != top.get_parent():
+		if c is Node3D:
+			t = (c as Node3D).transform * t
+		c = c.get_parent()
+	return t
+
+
+static func _all_nodes(n: Node) -> Array:
+	var out := [n]
+	for c in n.get_children():
+		out.append_array(_all_nodes(c))
+	return out
 
 
 func _try_custom_model(team: Dictionary) -> Node3D:
@@ -890,7 +1068,7 @@ func _build_wheels() -> void:
 		var sx := -0.8 if left else 0.8
 		if not front:
 			sx = -0.78 if left else 0.78
-		root.position = Vector3(sx, R, -1.7 if front else 1.7)
+		root.position = Vector3(sx, R, -_wheel_z if front else _wheel_z)
 		add_child(root)
 		var steer := Node3D.new()
 		root.add_child(steer)

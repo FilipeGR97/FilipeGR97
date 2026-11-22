@@ -22,6 +22,7 @@ func setup(p_car: Car, p_rig: CameraRig) -> void:
 	_vp.size = SIZE
 	_vp.msaa_3d = Viewport.MSAA_DISABLED
 	_vp.positional_shadow_atlas_size = 0
+	_vp.mesh_lod_threshold = 8.0        # imagem pequena: malhas bem simplificadas
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(_vp)
 	_cam = Camera3D.new()
@@ -46,7 +47,8 @@ func setup(p_car: Car, p_rig: CameraRig) -> void:
 		m.uv1_offset = Vector3(1.0 if sd < 0.0 else 0.5, 0, 0)
 		qm.material = m
 		quad.mesh = qm
-		quad.position = CarModel.G(0.676, 0.735, sd * 0.53)
+		var mp: Vector3 = car.model.mirror_pos
+		quad.position = Vector3(sd * mp.x, mp.y, mp.z)
 		quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		car.model.add_child(quad)
 	_own_layer(car.model)
@@ -61,7 +63,7 @@ func _process(_dt: float) -> void:
 		return
 	# mesma transformação interpolada que a câmera principal usa (sem defasagem entre as duas)
 	var xf := car.get_global_transform_interpolated() * car.model.transform
-	var pos := xf * CarModel.G(0.6, 0.86, 0.0)
+	var pos := xf * (CarModel.G(0.6, 0.86, 0.0) + car.model.cam_off)
 	var basis := xf.basis.orthonormalized().rotated(xf.basis.y.normalized(), PI)
 	_cam.global_transform = Transform3D(basis, pos)
 	# um pouco para baixo, como um espelho de verdade enxerga a pista atrás

@@ -15,3 +15,12 @@ Todos os recursos abaixo são **CC0 (domínio público)**, da [Poly Haven](https
 | `textures/suit_*` | textura "Bi Stretch" |
 
 `textures/tyre_letters.png` (letreiro "VELTRA CORSA R1", marca fictícia) foi gerado para o jogo.
+
+## Modelos 3D (Patch 7)
+
+| Arquivo | Origem | Licença |
+|---|---|---|
+| `cars_src/sf90/SF90.fbx` + texturas `SF90_Main_*` | "Ferrari F1 2019 \| www.vecarz.com" por **heynic** (VeCarz) — https://sketchfab.com/3d-models/none-fefcd94bface4f2ebcd5750e6c408f6a | **CC BY 4.0** (https://creativecommons.org/licenses/by/4.0/) |
+
+Alterações feitas no jogo: escala/rotação, rodas/volante/decalques originais escondidos, pintura original
+substituída pelas pinturas das equipes fictícias e marcas reais trocadas por patrocinadores fictícios.

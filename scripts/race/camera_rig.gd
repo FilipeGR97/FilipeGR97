@@ -71,11 +71,13 @@ func _process(dt: float) -> void:
 			elif view == View.CLASSIC:
 				local = CarModel.CLASSICCAM
 			elif view == View.NOSE:
-				local = CarModel.NOSECAM
+				local = target.model.nose_cam
 			# cabeça balança com as forças G
 			var g := target.g_force
 			var head_target := Vector3(clampf(-g.x * 0.012, -0.05, 0.05), clampf(-g.y * 0.004, -0.02, 0.02), clampf(g.z * 0.01, -0.04, 0.04)) if view <= View.COCKPIT else Vector3.ZERO
 			_head = _head.lerp(head_target, minf(dt * 6.0, 1.0))
+			if view != View.NOSE:
+				local += target.model.cam_off
 			var pos := mxf * (local + _head)
 			var basis := mxf.basis.orthonormalized()
 			if look_back:

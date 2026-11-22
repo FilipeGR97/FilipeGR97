@@ -99,6 +99,8 @@ func setup(p_kind: int, quality: int) -> void:
 	var vp := get_viewport()
 	if vp:
 		vp.msaa_3d = q["msaa"]
+		# nível de detalhe das malhas: troca para a versão simplificada quando o erro fica < 2 px
+		vp.mesh_lod_threshold = 2.0
 		vp.scaling_3d_scale = q["scale"]
 	# ---------------- chuva
 	if rain > 0.0:

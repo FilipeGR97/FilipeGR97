@@ -4,6 +4,33 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 7 — v0.7.0 (modelo 3D real no carro 2026)
+
+### Modelos enviados — checagem de licença
+| Modelo | Resultado |
+|---|---|
+| Ferrari SF90 2019 (VeCarz, CC BY 4.0) | ✅ **em uso** como carro da categoria 2026 |
+| McLaren MP4/5 1989 (VeCarz, CC BY 4.0) | ✅ liberado — falta a versão glTF/GLB (o arquivo veio em .blend) |
+| Capacete (Fabianmml, CC BY) | ✅ liberado — próximo passo |
+| Aston Martin AMR25 | ❌ texturas da Force India do jogo da Codemasters |
+| McLaren MCL60 | ❌ reenvio de modelo de outro autor |
+| Ferrari F2008 | ⚠️ conversão de mod de jogo antigo |
+| Luva (HandPGlove) | ⚠️ autor não identificado; mão aberta sem esqueleto (não segura o volante) |
+
+### Carro 2026 novo
+- Formato real de F1 moderno (halo, sidepods esculpidos, asas com vários elementos, suspensão, assoalho).
+- **Repintado com as nossas equipes**: onde era a pintura original, entra a pintura da equipe (mesmos estilos do
+  Patch 6); carbono, metal e detalhes do modelo continuam.
+- **Sem marcas reais**: logos originais escondidos; nos mesmos lugares entram os patrocinadores fictícios e o número.
+- Rodas, volante, mãos e capacete do jogo encaixados no modelo; câmeras e retrovisores ajustados.
+- Crédito no menu e em `assets/CREDITOS.md` (exigência da licença).
+
+### Correções
+- Câmera **Bico** (tecla 4) ficava dentro do bico no carro novo (tela escura) — agora fica em cima dele.
+- Textos de patrocinador não projetam mais sombra (custo menor com 20 carros).
+
+---
+
 ## Patch 6 — v0.6.0 (carros e pinturas)
 
 Inspirado no nível de detalhe dos carros de referência (cor, acabamento, adesivos) — feito no nosso modelo:
