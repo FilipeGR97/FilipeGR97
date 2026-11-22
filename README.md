@@ -25,9 +25,9 @@ Requisitos: placa de vídeo com Vulkan (GTX 900 ou mais nova). Testado numa GTX 
 | Pedir box | P | D-pad ↑ |
 | Painel de estratégia / trocar pneu do pit | Tab / PgDn | Back / D-pad ↓ |
 | Balanço de freio | [ e ] | — |
-| Câmera (alternar / escolher) / olhar para trás | C ou 1–7 / V | Y / R3 |
+| Câmera (alternar / escolher) / olhar para trás | C ou 1–8 / V | Y / R3 |
 
-Câmeras: atrás do piloto (padrão), olhos do piloto, T-Cam, bico, perseguição perto/longe e TV.
+Câmeras: atrás do piloto (padrão), olhos do piloto, T-Cam, bico, perseguição perto/longe, TV e **Clássica** (tecla 8: alta, atrás do capacete, estilo jogos de 2006).
 | Voltar à pista | Backspace | — |
 | Pausa | Esc | Start |
 

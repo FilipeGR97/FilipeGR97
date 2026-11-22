@@ -21,6 +21,9 @@ var _whine: Node
 var _tyre: Node
 var _wind: Node
 var _kerb: Node
+var _bump: Node                 # baque avulso ao subir na zebra/lombada
+var _kerb_prev := 0.0
+var _bump_cd := 0.0
 var _shift_dip := 0.0
 var _whine_amt := 0.3
 var _pitch_k := 1.0
@@ -64,9 +67,11 @@ func setup(p_car: Car, p_spatial: bool) -> void:
 	# cada equipe com afinação levemente diferente (escapamento/mapa), mesmo com o mesmo motor
 	_pitch_k = 1.0 + float((hash(String(car.team["name"])) % 7) - 3) * 0.005
 	if not spatial:
-		_tyre = _player(_noise_stream("tyre", 0.12, 0.35), -40.0)
+		_tyre = _player(_squeal_stream(), -40.0)
 		_wind = _player(_noise_stream("wind", 0.02, 0.0), -40.0)
 		_kerb = _player(_kerb_stream(), -40.0)
+		_bump = _player(_bump_stream(), -80.0)
+		_bump.call_deferred("stop")
 
 
 func _player(stream: AudioStream, vol: float) -> Node:
@@ -264,12 +269,21 @@ func _process(dt: float) -> void:
 		slip *= clampf(car.speed / 8.0, 0.0, 1.0)
 		if car.wetness > 0.3:
 			slip *= 0.3
-		_apply(_tyre, 0.9 + slip * 0.2, base - 44.0 + slip * 26.0)
+		_apply(_tyre, 0.92 + slip * 0.16, base - 48.0 + slip * 24.0 if slip > 0.01 else -80.0)
 		_apply(_wind, 0.6 + car.speed / 90.0 * 0.8, base - 48.0 + clampf(car.speed / 90.0, 0.0, 1.0) * 22.0)
-		# batidas por segundo = v / 0,6 m  ->  pitch = (v / 0,6) / 40
-		var kp := clampf(car.speed / 0.6 / 40.0, 0.35, 3.0)
+		# batidas por segundo = v / 1,3 m (nervuras da zebra)  ->  pitch = (v / 1,3) / 40
+		# (referência: ~30-40 baques graves por segundo em velocidade de corrida, quase sem agudo)
+		var kp := clampf(car.speed / 1.3 / 40.0, 0.3, 1.6)
 		var kv := clampf(kerb, 0.0, 1.0) * clampf(car.speed / 12.0, 0.0, 1.0)
-		_apply(_kerb, kp, base - 60.0 + kv * 52.0 if kv > 0.01 else -80.0)
+		_apply(_kerb, kp, base - 58.0 + kv * 44.0 if kv > 0.01 else -80.0)
+		# lombada: ao subir na zebra em velocidade, um "tum" grave avulso
+		_bump_cd = maxf(_bump_cd - dt, 0.0)
+		if kerb > _kerb_prev + 0.3 and car.speed > 8.0 and _bump_cd <= 0.0:
+			_bump_cd = 0.18
+			_bump.set("pitch_scale", _rng.randf_range(0.9, 1.1))
+			_bump.set("volume_db", base - 16.0 + clampf(car.speed / 60.0, 0.0, 1.0) * 6.0)
+			_bump.call("play")
+		_kerb_prev = kerb
 
 
 func _apply(p: Node, pitch: float, db: float) -> void:
@@ -397,6 +411,54 @@ static func _noise_stream(ck: String, cut: float, band: float) -> AudioStream:
 	return st
 
 
+## Pneu "cantando": guincho tonal (~850 Hz com harmônicos) que oscila devagar, com pouco ruído.
+## Antes era ruído de banda larga, que soava como chiado/estouro nas freadas e curvas.
+static func _squeal_stream() -> AudioStream:
+	if _cache.has("squeal"):
+		return _cache["squeal"]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 31
+	var buf := PackedFloat32Array()
+	buf.resize(LOOP_N + XF)
+	var ph := 0.0
+	var wob := 0.0
+	var amp := 0.0
+	var nz := 0.0
+	for i in LOOP_N + XF:
+		var t := float(i) / RATE
+		wob += (rng.randf_range(-1.0, 1.0) - wob) * 0.0015
+		amp += (rng.randf_range(-1.0, 1.0) - amp) * 0.002
+		var f := 850.0 + 60.0 * sin(TAU * 4.0 * t) + 900.0 * wob
+		ph += TAU * f / RATE
+		var tone := sin(ph) + 0.32 * sin(2.0 * ph + 0.4) + 0.12 * sin(3.0 * ph + 1.1)
+		nz += (rng.randf_range(-1.0, 1.0) - nz) * 0.35
+		buf[i] = tone * (0.75 + 0.25 * clampf(amp * 8.0, -1.0, 1.0)) + nz * 0.06
+	var st := _to_wav(_crossfade(buf))
+	_cache["squeal"] = st
+	return st
+
+
+## Baque da lombada/zebra alta: grave curto (55 Hz + 110 Hz) com ataque rápido, sem loop.
+static func _bump_stream() -> AudioStream:
+	if _cache.has("bump"):
+		return _cache["bump"]
+	var n := int(RATE * 0.45)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	for i in n:
+		var t := float(i) / RATE
+		var env := (1.0 - exp(-t * 400.0)) * exp(-t * 11.0)
+		var v := sin(TAU * 55.0 * t) * 0.8 + sin(TAU * 110.0 * t + 0.5) * 0.3 * exp(-t * 20.0) + sin(TAU * 82.0 * t) * 0.2
+		data.encode_s16(i * 2, int(clampf(v * env * 0.85, -1.0, 1.0) * 32767.0))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = RATE
+	w.data = data
+	w.loop_mode = AudioStreamWAV.LOOP_DISABLED
+	_cache["bump"] = w
+	return w
+
+
 static func _kerb_stream() -> AudioStream:
 	# zebra: trem de batidas (uma por nervura). Base de 40 batidas/s; o pitch acompanha a velocidade
 	# (nervuras a cada ~0,6 m). Cada batida = baque grave do pneu + estalo seco + chocalho da carroceria.
@@ -415,9 +477,9 @@ static func _kerb_stream() -> AudioStream:
 		var var_k := 0.85 + 0.3 * fposmod(sin(hit * 12.9898) * 43758.5, 1.0)
 		var thump := sin(TAU * 62.0 * tt) * exp(-tt * 55.0) * 1.0
 		var body := sin(TAU * 130.0 * tt + 0.6) * exp(-tt * 80.0) * 0.45
-		var click := rng.randf_range(-1.0, 1.0) * exp(-tt * 900.0) * 0.6
+		var click := rng.randf_range(-1.0, 1.0) * exp(-tt * 900.0) * 0.08
 		rattle += (rng.randf_range(-1.0, 1.0) - rattle) * 0.25
-		buf[i] = (thump + body + click) * var_k + rattle * 0.08
+		buf[i] = (thump + body + click) * var_k + rattle * 0.03
 	var st := _to_wav(_crossfade(buf))
 	_cache["kerb"] = st
 	return st

@@ -19,3 +19,10 @@ Sonsmotor/
 # jogos/arquivos de terceiros (nunca versionar)
 *.pkg
 *.iso
+
+# vídeos de referência (pesados demais para o GitHub)
+*.mp4
+*.mkv
+*.webm
+*.m4a
+*.mp3

@@ -72,6 +72,13 @@ var _noise_tex: NoiseTexture2D
 var _normal_tex: NoiseTexture2D
 var _road_mats: Array = []
 var _terrain_mats: Array = []
+# texturas reais (Poly Haven, CC0)
+const TEX_ASPHALT := "res://assets/textures/asphalt_detail.jpg"
+const TEX_ASPHALT_N := "res://assets/textures/asphalt_normal.jpg"
+const TEX_ASPHALT_R := "res://assets/textures/asphalt_rough.jpg"
+const TEX_GRASS := "res://assets/textures/grass_detail.jpg"
+const TEX_GRAVEL := "res://assets/textures/gravel_albedo.jpg"
+const TEX_GRAVEL_N := "res://assets/textures/gravel_normal.jpg"
 
 
 # ======================================================================= construção
@@ -572,7 +579,9 @@ func _road_material(lines: bool) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/road.gdshader")
 	m.set_shader_parameter("noise_tex", _noise_tex)
-	m.set_shader_parameter("normal_tex", _normal_tex)
+	m.set_shader_parameter("detail_tex", load(TEX_ASPHALT))
+	m.set_shader_parameter("normal_tex", load(TEX_ASPHALT_N))
+	m.set_shader_parameter("rough_tex", load(TEX_ASPHALT_R))
 	m.set_shader_parameter("half_width", half_width)
 	m.set_shader_parameter("edge_lines", 1.0 if lines else 0.0)
 	m.set_shader_parameter("wetness", wetness)
@@ -580,10 +589,20 @@ func _road_material(lines: bool) -> ShaderMaterial:
 	return m
 
 
-func _terrain_material(a: Color, b: Color, scale: float, stripes: float, rough: float) -> ShaderMaterial:
+func _terrain_material(a: Color, b: Color, scale: float, stripes: float, rough: float, kind := "grass") -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/terrain.gdshader")
 	m.set_shader_parameter("noise_tex", _noise_tex)
+	if kind == "grass":
+		m.set_shader_parameter("detail_tex", load(TEX_GRASS))
+		m.set_shader_parameter("detail_mix", 0.45)
+		m.set_shader_parameter("tex_scale", 0.6)
+	elif kind == "gravel":
+		m.set_shader_parameter("albedo_tex", load(TEX_GRAVEL))
+		m.set_shader_parameter("normal_tex", load(TEX_GRAVEL_N))
+		m.set_shader_parameter("albedo_mix", 1.0)
+		m.set_shader_parameter("tex_scale", 0.9)
+		m.set_shader_parameter("normal_depth", 1.0)
 	m.set_shader_parameter("color_a", a)
 	m.set_shader_parameter("color_b", b)
 	m.set_shader_parameter("scale", scale)
@@ -802,11 +821,15 @@ func _build_surfaces() -> void:
 					Vector2(e0, s0), Vector2(f0, s0), Vector2(e0, s1), Vector2(f1, s1))
 	var road_mat := _road_material(true)
 	var plain_mat := _road_material(false)
-	var kerb_mat := StandardMaterial3D.new()
-	kerb_mat.vertex_color_use_as_albedo = true
-	kerb_mat.roughness = 0.55
-	var grass_mat := _terrain_material(Color(0.13, 0.30, 0.07), Color(0.26, 0.44, 0.12), 0.06, 1.0, 0.95)
-	var gravel_mat := _terrain_material(Color(0.55, 0.49, 0.38), Color(0.72, 0.66, 0.53), 0.5, 0.0, 1.0)
+	var kerb_mat := ShaderMaterial.new()
+	kerb_mat.shader = load("res://shaders/kerb.gdshader")
+	kerb_mat.set_shader_parameter("detail_tex", load(TEX_ASPHALT))
+	kerb_mat.set_shader_parameter("normal_tex", load(TEX_ASPHALT_N))
+	kerb_mat.set_shader_parameter("noise_tex", _noise_tex)
+	kerb_mat.set_shader_parameter("wetness", wetness)
+	_terrain_mats.append(kerb_mat)
+	var grass_mat := _terrain_material(Color(0.15, 0.23, 0.08), Color(0.23, 0.31, 0.11), 0.06, 1.0, 0.95)
+	var gravel_mat := _terrain_material(Color(0.55, 0.49, 0.38), Color(0.72, 0.66, 0.53), 0.5, 0.0, 1.0, "gravel")
 	_add_mesh(road.commit(true), road_mat, false)
 	_add_mesh(apron.commit(true), plain_mat, false)
 	_add_mesh(kerbs.commit(false), kerb_mat, false)
@@ -831,7 +854,7 @@ func _build_surfaces() -> void:
 	pm.size = Vector2(9000, 9000)
 	gm.mesh = pm
 	gm.position = Vector3(400, -0.6, 400)
-	gm.material_override = _water_material() if street else _terrain_material(Color(0.14, 0.27, 0.08), Color(0.24, 0.36, 0.12), 0.02, 0.0, 1.0)
+	gm.material_override = _water_material() if street else _terrain_material(Color(0.15, 0.22, 0.08), Color(0.22, 0.29, 0.11), 0.02, 0.0, 1.0)
 	gm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(gm)
 
@@ -961,7 +984,7 @@ func _build_walls() -> void:
 		_add_mesh(curbwall.commit(false), stone, false)
 		_add_mesh(sidewalk.commit(false), stone, false)
 	else:
-		_add_mesh(skirt.commit(false), _terrain_material(Color(0.14, 0.28, 0.08), Color(0.25, 0.38, 0.12), 0.03, 0.0, 1.0), false)
+		_add_mesh(skirt.commit(false), _terrain_material(Color(0.15, 0.23, 0.08), Color(0.22, 0.3, 0.11), 0.03, 0.0, 1.0), false)
 
 
 func _fence_texture() -> ImageTexture:
@@ -1214,6 +1237,7 @@ func _build_scenery() -> void:
 		_tunnels()
 	else:
 		_trees(rng)
+		_treeline(rng)
 	# câmeras de TV
 	tv_cams.clear()
 	var step := int(220.0 / ds)
@@ -1225,6 +1249,8 @@ func _build_scenery() -> void:
 		tv_cams.append(point(i, lat, 5.0 + (i % 3) * 2.0))
 
 
+## Arquibancada: degraus de concreto, cadeiras plásticas coloridas (uma cor por setor, como nos
+## autódromos de verdade), público sentado em 3D (MultiMesh) e cobertura com pilares.
 func _grandstand(frac: float, side: int, glen: float, rng: RandomNumberGenerator) -> void:
 	var sd := float(side)
 	var i := idx_at_s(frac * length)
@@ -1234,46 +1260,159 @@ func _grandstand(frac: float, side: int, glen: float, rng: RandomNumberGenerator
 		maxw = maxf(maxw, float(run_w[si][idx(i + k)]))
 	var lat := (half_width + APRON + maxw + 4.0) * sd
 	var f := frame(i, lat, 0.0)
-	var b := Builder.new()
-	var rows := 12
-	var cell := 0.9
-	var cols := int(glen / cell)
+	var rows := 14
+	var sh := 0.5          # altura do degrau
+	var sdp := 0.85        # profundidade do degrau
+	var steps := Builder.new()
+	var seats := Builder.new()
+	var palette := [Color(0.05, 0.2, 0.62), Color(0.72, 0.08, 0.08), Color(0.06, 0.42, 0.24), Color(0.8, 0.8, 0.82), Color(0.9, 0.62, 0.05)]
+	var seat_col: Color = palette[rng.randi() % palette.size()]
+	var conc_col := Color(0.62, 0.62, 0.6)
+	var z0 := -glen * 0.5
+	var z1 := glen * 0.5
+	var people: Array = []
+	var occupancy := rng.randf_range(0.35, 0.7)
 	for r in rows:
-		var y0 := 0.8 + r * 0.55
-		var d0 := r * 0.85
-		for c in cols:
-			var x0 := -glen * 0.5 + c * cell
-			var crowd := rng.randf() < 0.86
-			var col := Color.from_hsv(rng.randf(), rng.randf_range(0.2, 0.8), rng.randf_range(0.35, 0.95)) if crowd else Color(0.25, 0.3, 0.38)
-			# degrau (topo), em coordenadas locais: x lateral -> ao longo de -Z do frame
-			var p0 := Vector3(d0 * sd, y0, -x0)
-			var p1 := Vector3(d0 * sd, y0, -(x0 + cell))
-			var p2 := Vector3((d0 + 0.85) * sd, y0, -x0)
-			var p3 := Vector3((d0 + 0.85) * sd, y0, -(x0 + cell))
-			var h := Vector3(0, 0.55, 0)
-			if sd > 0.0:
-				b.quad(f * p0, f * p2, f * p1, f * p3, f.basis.y, f.basis.y, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, col, col, col, col, false)
-				b.quad(f * (p0 + h * 0.0), f * (p0 - h), f * p1, f * (p1 - h), -f.basis.x, -f.basis.x, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, col.darkened(0.3), col.darkened(0.3), col.darkened(0.3), col.darkened(0.3), false)
-			else:
-				b.quad(f * p2, f * p0, f * p3, f * p1, f.basis.y, f.basis.y, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, col, col, col, col, false)
-				b.quad(f * (p0 - h), f * p0, f * (p1 - h), f * p1, f.basis.x, f.basis.x, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, col.darkened(0.3), col.darkened(0.3), col.darkened(0.3), col.darkened(0.3), false)
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.roughness = 0.9
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_add_mesh(b.commit(false), m)
+		var y0 := 0.9 + r * sh
+		var d0 := r * sdp
+		# piso do degrau e espelho (vertical)
+		_lq(steps, f, Vector3(d0 * sd, y0, -z0), Vector3((d0 + sdp) * sd, y0, -z0), Vector3(d0 * sd, y0, -z1), Vector3((d0 + sdp) * sd, y0, -z1), Vector3.UP, conc_col, 0.0)
+		_lq(steps, f, Vector3(d0 * sd, y0 - sh, -z0), Vector3(d0 * sd, y0, -z0), Vector3(d0 * sd, y0 - sh, -z1), Vector3(d0 * sd, y0, -z1), Vector3(-sd, 0, 0), conc_col.darkened(0.15), 0.0)
+		# cadeiras: assento e encosto (textura com a separação entre cadeiras)
+		var col := seat_col.lightened(rng.randf_range(-0.04, 0.06))
+		var ds0 := d0 + 0.22
+		var ds1 := d0 + 0.6
+		_lq(seats, f, Vector3(ds0 * sd, y0 + 0.42, -z0), Vector3(ds1 * sd, y0 + 0.4, -z0), Vector3(ds0 * sd, y0 + 0.42, -z1), Vector3(ds1 * sd, y0 + 0.4, -z1), Vector3.UP, col, 2.0)
+		_lq(seats, f, Vector3(ds1 * sd, y0 + 0.4, -z0), Vector3((ds1 + 0.06) * sd, y0 + 0.82, -z0), Vector3(ds1 * sd, y0 + 0.4, -z1), Vector3((ds1 + 0.06) * sd, y0 + 0.82, -z1), Vector3(-sd, 0.15, 0).normalized(), col.darkened(0.12), 2.0)
+		# público sentado, olhando para a pista
+		var z := z0 + 0.25
+		while z < z1 - 0.25:
+			if rng.randf() < occupancy:
+				people.append(f * Vector3((ds0 + 0.12) * sd, y0 + 0.42, -z))
+			z += 0.5
 	var conc := StandardMaterial3D.new()
-	conc.albedo_color = Color(0.7, 0.71, 0.72)
-	var depth := rows * 0.85
-	_box_at(f, Vector3(depth + 1.0, 0.8, glen), Vector3(sd * depth * 0.5, 0.4, 0), conc, false)
-	_box_at(f, Vector3(0.6, rows * 0.55 + 0.8, glen), Vector3(sd * (depth + 0.3), (rows * 0.55 + 0.8) * 0.5, 0), conc, false)
+	conc.albedo_color = Color.WHITE
+	conc.vertex_color_use_as_albedo = true
+	conc.roughness = 0.92
+	conc.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_add_mesh(steps.commit(false), conc)
+	var sm := StandardMaterial3D.new()
+	sm.vertex_color_use_as_albedo = true
+	sm.albedo_texture = _seat_texture()
+	sm.roughness = 0.45
+	sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_add_mesh(seats.commit(false), sm, false)
+	_spectators(people, -f.basis.x * sd, rng)
+	# estrutura: base, parede do fundo, cobertura e pilares
+	var wall := StandardMaterial3D.new()
+	wall.albedo_color = Color(0.7, 0.71, 0.72)
+	wall.roughness = 0.85
+	var depth := rows * sdp
+	var top := 0.9 + rows * sh
+	_box_at(f, Vector3(0.4, 1.0, glen), Vector3(sd * -0.2, 0.5, 0), wall, false)
+	_box_at(f, Vector3(0.5, top + 0.4, glen), Vector3(sd * (depth + 0.25), (top + 0.4) * 0.5, 0), wall, false)
 	var roof := StandardMaterial3D.new()
-	roof.albedo_color = Color(0.92, 0.93, 0.95)
-	roof.metallic = 0.4
-	roof.roughness = 0.4
-	_box_at(f, Vector3(depth + 3.0, 0.3, glen + 2.0), Vector3(sd * depth * 0.5, rows * 0.55 + 4.5, 0), roof, false)
-	for k in range(int(glen / 25.0) + 1):
-		_box_at(f, Vector3(0.4, rows * 0.55 + 4.5, 0.4), Vector3(sd * (depth + 0.2), (rows * 0.55 + 4.5) * 0.5, -glen * 0.5 + k * 25.0), conc, false)
+	roof.albedo_color = Color(0.86, 0.87, 0.9)
+	roof.metallic = 0.5
+	roof.roughness = 0.35
+	var rh := top + 3.6
+	var rmi := _box_at(f, Vector3(depth + 4.0, 0.25, glen + 2.0), Vector3(sd * (depth * 0.5 - 0.5), rh, 0), roof, false)
+	rmi.rotate_object_local(Vector3.FORWARD, -sd * 0.06)
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.2, 0.22, 0.26)
+	steel.metallic = 0.6
+	steel.roughness = 0.4
+	var nseg := maxf(floorf(glen / 18.0), 1.0)
+	for k in range(int(nseg) + 1):
+		var zk := -glen * 0.5 + k * glen / nseg
+		_box_at(f, Vector3(0.35, rh, 0.35), Vector3(sd * (depth + 0.2), rh * 0.5, zk), steel, false)
+		_box_at(f, Vector3(depth + 3.0, 0.3, 0.2), Vector3(sd * (depth * 0.5 - 0.3), rh - 0.25, zk), steel, false)
+
+
+## Quadrilátero em coordenadas locais do frame f (cantos na ordem a0, b0, a1, b1).
+## uvk > 0: u = distância ao longo da arquibancada × uvk (para repetir a textura das cadeiras).
+func _lq(b: Builder, f: Transform3D, a0: Vector3, b0: Vector3, a1: Vector3, b1: Vector3, nrm: Vector3, col: Color, uvk: float) -> void:
+	var nn := (f.basis * nrm).normalized()
+	b.quad(f * a0, f * b0, f * a1, f * b1, nn, nn, Vector2(-a0.z * uvk, 0), Vector2(-b0.z * uvk, 1), Vector2(-a1.z * uvk, 0), Vector2(-b1.z * uvk, 1), col, col, col, col, false)
+
+
+## Textura da fileira de cadeiras: cadeira clara com vão escuro entre elas (repete a cada 0,5 m).
+func _seat_texture() -> ImageTexture:
+	var img := Image.create(32, 8, false, Image.FORMAT_RGB8)
+	for y in 8:
+		for x in 32:
+			var v := 1.0
+			if x < 3 or x > 29:
+				v = 0.25
+			v *= 0.85 + 0.15 * (1.0 - absf(y - 3.5) / 4.0)
+			img.set_pixel(x, y, Color(v, v, v))
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
+var _person_mesh: ArrayMesh
+
+
+## Público sentado: MultiMesh de um boneco simples (tronco, cabeça, pernas) com camiseta colorida.
+func _spectators(spots: Array, facing: Vector3, rng: RandomNumberGenerator) -> void:
+	if spots.is_empty():
+		return
+	if _person_mesh == null:
+		_person_mesh = _make_person()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	mm.mesh = _person_mesh
+	mm.instance_count = spots.size()
+	var basis := Basis.looking_at(Vector3(facing.x, 0.0, facing.z).normalized(), Vector3.UP)
+	var shirts := [Color(0.85, 0.1, 0.1), Color(0.95, 0.95, 0.95), Color(0.1, 0.2, 0.6), Color(1.0, 0.75, 0.0), Color(0.1, 0.1, 0.12), Color(0.0, 0.5, 0.3), Color(1.0, 0.45, 0.0), Color(0.5, 0.75, 0.95)]
+	for k in spots.size():
+		var sc := rng.randf_range(0.9, 1.08)
+		var b := basis.rotated(Vector3.UP, rng.randf_range(-0.35, 0.35)).scaled(Vector3(sc, sc, sc))
+		mm.set_instance_transform(k, Transform3D(b, spots[k]))
+		var c: Color = shirts[rng.randi() % shirts.size()]
+		mm.set_instance_custom_data(k, c.lightened(rng.randf_range(-0.1, 0.15)))
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+
+func _make_person() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# [centro, tamanho, cor (alfa 0 = usa a camiseta da instância), esfera?]
+	var parts := [
+		[Vector3(0, 0.33, 0.02), Vector3(0.4, 0.52, 0.24), Color(1, 1, 1, 0), false],
+		[Vector3(0, 0.07, -0.22), Vector3(0.36, 0.14, 0.44), Color(0.12, 0.14, 0.2, 1), false],
+		[Vector3(0, 0.71, 0.0), Vector3(0.2, 0.22, 0.21), Color(0.8, 0.6, 0.47, 1), true],
+	]
+	for pt in parts:
+		var mesh: PrimitiveMesh
+		if pt[3]:
+			var sp := SphereMesh.new()
+			sp.radius = 0.11
+			sp.height = 0.24
+			sp.radial_segments = 8
+			sp.rings = 4
+			mesh = sp
+		else:
+			var bm := BoxMesh.new()
+			bm.size = pt[1]
+			mesh = bm
+		var arr := mesh.get_mesh_arrays()
+		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var ns: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+		var ids: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		for id in ids:
+			st.set_color(pt[2])
+			st.set_normal(ns[id])
+			st.add_vertex(vs[id] + (pt[0] as Vector3))
+	var m := st.commit()
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/spectator.gdshader")
+	m.surface_set_material(0, mat)
+	return m
 
 
 const SPONSORS := ["NEXA", "VOLTEX", "ORBITAL", "KAIROS", "PRISMA", "TERRA OIL", "MERIDIAN", "APEX GP", "SOLARA", "QUANTA"]
@@ -1412,11 +1551,15 @@ func _trees(rng: RandomNumberGenerator) -> void:
 	tm.roughness = 1.0
 	var cm := StandardMaterial3D.new()
 	cm.vertex_color_use_as_albedo = true
-	cm.roughness = 0.95
-	cm.albedo_texture = _noise_tex
-	cm.uv1_triplanar = true
-	cm.uv1_scale = Vector3(0.6, 0.6, 0.6)
-	var kinds := [_tree_mesh(false, tm, cm), _tree_mesh(true, tm, cm)]
+	cm.roughness = 0.9
+	cm.albedo_texture = _leaf_texture()
+	cm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	cm.alpha_scissor_threshold = 0.3
+	cm.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+	cm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	cm.backlight_enabled = true
+	cm.backlight = Color(0.18, 0.22, 0.08)
+	var kinds := [_tree_mesh(false, tm, cm, rng), _tree_mesh(true, tm, cm, rng)]
 	for kind in 2:
 		var list: Array = []
 		for k in xforms.size():
@@ -1429,11 +1572,85 @@ func _trees(rng: RandomNumberGenerator) -> void:
 		mm.instance_count = list.size()
 		for k in list.size():
 			mm.set_instance_transform(k, list[k])
-			var hue := rng.randf_range(0.2, 0.3) if kind == 0 else rng.randf_range(0.28, 0.36)
-			mm.set_instance_color(k, Color.from_hsv(hue, rng.randf_range(0.45, 0.7), rng.randf_range(0.55, 0.9)))
+			var hue := rng.randf_range(0.19, 0.27) if kind == 0 else rng.randf_range(0.27, 0.33)
+			mm.set_instance_color(k, Color.from_hsv(hue, rng.randf_range(0.35, 0.6), rng.randf_range(0.5, 0.8)))
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		add_child(mmi)
+
+
+## Mata no horizonte: anel de painéis recortados (silhueta de copas) bem longe da pista, como nos
+## jogos clássicos. Barato de desenhar e tira o "vazio" entre o chão e o céu.
+func _treeline(rng: RandomNumberGenerator) -> void:
+	var c := Vector2.ZERO
+	for p in pos:
+		c += Vector2(p.x, p.z)
+	c /= float(n)
+	var ring := PackedVector2Array()
+	var steps := 120
+	for k in steps:
+		var a := TAU * k / steps
+		var d := Vector2(cos(a), sin(a))
+		var far := 0.0
+		for i in range(0, n, 4):
+			far = maxf(far, (Vector2(pos[i].x, pos[i].z) - c).dot(d))
+		ring.append(c + d * (far + rng.randf_range(260.0, 330.0)))
+	var b := Builder.new()
+	var u := 0.0
+	for k in steps:
+		var p0 := ring[k]
+		var p1 := ring[(k + 1) % steps]
+		var seg := p0.distance_to(p1)
+		var h0 := 22.0
+		var nrm := Vector3(c.x - (p0.x + p1.x) * 0.5, 0.0, c.y - (p0.y + p1.y) * 0.5).normalized()
+		var u1 := u + seg / 90.0
+		var y0 := -2.0
+		b.quad(Vector3(p0.x, y0 + h0, p0.y), Vector3(p1.x, y0 + h0, p1.y), Vector3(p0.x, y0, p0.y), Vector3(p1.x, y0, p1.y), nrm, nrm,
+			Vector2(u, 0), Vector2(u1, 0), Vector2(u, 1), Vector2(u1, 1), Color.WHITE, Color.WHITE, Color.WHITE, Color.WHITE, false)
+		u = u1
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = _treeline_texture()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.roughness = 1.0
+	m.texture_repeat = true
+	_add_mesh(b.commit(false), m, false)
+
+
+func _treeline_texture() -> ImageTexture:
+	var w := 512
+	var h := 128
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var r := RandomNumberGenerator.new()
+	r.seed = 99
+	# copas: círculos sobrepostos de alturas variadas (o painel repete na horizontal)
+	var crowns := 90
+	for k in crowns:
+		var cx := r.randf() * w
+		var tall := r.randf() < 0.15
+		var rad := r.randf_range(9.0, 17.0) if not tall else r.randf_range(5.0, 8.0)
+		var top := r.randf_range(0.12, 0.45) * h if not tall else r.randf_range(0.02, 0.15) * h
+		var g := r.randf_range(0.6, 1.0)
+		var base_col := Color(0.16 * g, 0.24 * g, 0.1 * g)
+		for y in range(int(top), h):
+			# copa arredondada no topo, "coluna" de folhagem até o chão
+			var cy := top + rad
+			var half := rad
+			if y < cy:
+				half = sqrt(maxf(rad * rad - (cy - y) * (cy - y), 0.0))
+			if tall:
+				half = rad * clampf((y - top) / (rad * 3.0), 0.25, 1.0)
+			for dx in range(-int(half), int(half) + 1):
+				var x := int(cx) + dx
+				x = (x % w + w) % w
+				var shade := 0.75 + 0.35 * (1.0 - float(y - top) / float(h - top))
+				var nz := r.randf_range(0.85, 1.12)
+				var col := Color(base_col.r * shade * nz, base_col.g * shade * nz, base_col.b * shade * nz, 1.0)
+				img.set_pixel(x, y, col)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
 
 
 # ======================================================================= circuito de rua
@@ -1659,44 +1876,100 @@ func _tunnels() -> void:
 
 
 ## Malha de árvore: folhosa (tronco + 5 tufos esféricos) ou conífera (tronco + 3 cones).
-func _tree_mesh(conifer: bool, trunk_mat: Material, crown_mat: Material) -> ArrayMesh:
+## Árvore: tronco + copa feita de "cartões" de folhas (textura recortada) com normais esféricas,
+## o que dá a aparência fofa de árvore de verdade em vez de bolas sólidas.
+func _tree_mesh(conifer: bool, trunk_mat: Material, crown_mat: Material, rng: RandomNumberGenerator) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	var trunk := CylinderMesh.new()
-	trunk.top_radius = 0.18
-	trunk.bottom_radius = 0.32
-	trunk.height = 4.5 if not conifer else 3.0
+	trunk.top_radius = 0.14
+	trunk.bottom_radius = 0.3
+	trunk.height = 5.5 if not conifer else 4.0
 	trunk.radial_segments = 6
 	var m := ArrayMesh.new()
-	st.create_from(trunk, 0)
 	var xf := Transform3D(Basis(), Vector3(0, trunk.height * 0.5, 0))
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.append_from(trunk, 0, xf)
 	m = st.commit()
 	m.surface_set_material(0, trunk_mat)
-	var cs := SurfaceTool.new()
-	cs.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var verts := PackedVector3Array()
+	var nrms := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var cols := PackedColorArray()
+	var idxs := PackedInt32Array()
+	# volumes da copa: [centro, raios]
+	var blobs: Array = []
 	if conifer:
-		for k in 3:
-			var cone := CylinderMesh.new()
-			cone.top_radius = 0.0
-			cone.bottom_radius = 2.4 - k * 0.6
-			cone.height = 3.6 - k * 0.6
-			cone.radial_segments = 9
-			cone.rings = 1
-			cs.append_from(cone, 0, Transform3D(Basis(), Vector3(0, 3.4 + k * 1.9, 0)))
+		for k in 5:
+			var hh := 3.2 + k * 1.5
+			var rr := 2.5 - k * 0.42
+			blobs.append([Vector3(0, hh, 0), Vector3(rr, 0.9, rr)])
 	else:
-		for t in [[0, 6.2, 0, 2.6], [1.5, 5.4, 0.4, 1.9], [-1.4, 5.6, -0.3, 2.0], [0.3, 5.2, 1.5, 1.8], [-0.2, 7.4, -0.6, 1.7]]:
-			var sp := SphereMesh.new()
-			sp.radius = t[3]
-			sp.height = t[3] * 1.8
-			sp.radial_segments = 9
-			sp.rings = 5
-			cs.append_from(sp, 0, Transform3D(Basis(), Vector3(t[0], t[1], t[2])))
-	cs.generate_normals()
-	var crown := cs.commit()
-	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, crown.surface_get_arrays(0))
+		blobs = [[Vector3(0, 6.6, 0), Vector3(3.0, 2.4, 3.0)], [Vector3(1.6, 5.6, 0.5), Vector3(2.0, 1.7, 2.0)],
+			[Vector3(-1.5, 5.8, -0.4), Vector3(2.1, 1.8, 2.1)], [Vector3(0.3, 5.4, 1.6), Vector3(1.9, 1.6, 1.9)],
+			[Vector3(-0.3, 8.2, -0.5), Vector3(1.9, 1.5, 1.9)]]
+	var center := Vector3(0, 6.2 if not conifer else 5.5, 0)
+	var cards := 110 if not conifer else 80
+	for k in cards:
+		var bl: Array = blobs[k % blobs.size()]
+		var dir := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
+		if dir.length() > 1.0:
+			dir = dir.normalized()
+		var c: Vector3 = bl[0] + dir * (bl[1] as Vector3) * 0.8
+		var sz := rng.randf_range(1.8, 2.8) * (0.8 if conifer else 1.0)
+		var b := Basis(Vector3(rng.randf_range(-1, 1), rng.randf_range(0.2, 1), rng.randf_range(-1, 1)).normalized(), rng.randf() * TAU)
+		var ax := b.x * sz * 0.5
+		var ay := b.y * sz * 0.5
+		var base := verts.size()
+		var corners := [c - ax - ay, c + ax - ay, c + ax + ay, c - ax + ay]
+		var uvq := [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+		# tom: mais escuro embaixo/dentro da copa
+		var shade := clampf(0.55 + 0.25 * (c.y - center.y) / 3.0 + 0.2 * (c - center).length() / 3.0, 0.35, 1.0)
+		for q in 4:
+			var p: Vector3 = corners[q]
+			verts.append(p)
+			nrms.append(((p - center) * Vector3(1.0, 0.7, 1.0)).normalized())
+			uvs.append(uvq[q])
+			cols.append(Color(shade, shade, shade))
+		idxs.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = nrms
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idxs
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	m.surface_set_material(1, crown_mat)
 	return m
+
+
+## Textura de um tufo de folhas (alfa recortado), gerada uma vez.
+func _leaf_texture() -> ImageTexture:
+	var sz := 128
+	var img := Image.create(sz, sz, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	for k in 700:
+		var c := Vector2(r.randf_range(8, sz - 8), r.randf_range(8, sz - 8))
+		# mais folhas no meio do cartão
+		var d := (c - Vector2(sz, sz) * 0.5).length() / (sz * 0.5)
+		if d > 0.97 or r.randf() < d * d * 0.5:
+			continue
+		var rad := r.randf_range(2.5, 5.5)
+		var g := r.randf_range(0.55, 1.0)
+		var col := Color(0.42 * g, 0.62 * g, 0.26 * g, 1.0)
+		var ang := r.randf() * TAU
+		for y in range(int(c.y - rad * 1.6), int(c.y + rad * 1.6) + 1):
+			for x in range(int(c.x - rad * 1.6), int(c.x + rad * 1.6) + 1):
+				if x < 0 or y < 0 or x >= sz or y >= sz:
+					continue
+				var v := Vector2(x, y) - c
+				var e := Vector2(v.x * cos(ang) + v.y * sin(ang), -v.x * sin(ang) + v.y * cos(ang))
+				if (e.x * e.x) / (rad * rad * 2.2) + (e.y * e.y) / (rad * rad * 0.6) <= 1.0:
+					img.set_pixel(x, y, col)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
 
 
 func _compute_minimap() -> void:

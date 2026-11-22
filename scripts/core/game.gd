@@ -155,7 +155,9 @@ func apply_audio() -> void:
 	if not has_lim and not OS.get_cmdline_user_args().has("nolimiter"):
 		var lim := AudioEffectHardLimiter.new()
 		lim.ceiling_db = -1.0
-		lim.pre_gain_db = 0.0
+		# a mistura (motor + pneus + zebra + vento + adversários) passava ~3 dB do teto o tempo todo e o
+		# limitador ficava sempre "apertando" (som estourado/chiado). Com folga, ele só pega picos raros.
+		lim.pre_gain_db = -4.5
 		AudioServer.add_bus_effect(0, lim)
 	var v: float = settings["master_volume"]
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(v, 0.0001)))

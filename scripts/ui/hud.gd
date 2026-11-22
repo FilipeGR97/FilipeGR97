@@ -393,7 +393,7 @@ func _process(dt: float) -> void:
 		_tower_timer = 0.25
 		_update_tower()
 	_update_pit_and_mfd()
-	_cam_lbl.text = "Câmera: %s  [C ou 1-7]" % CameraRig.NAMES[race.camera.view]
+	_cam_lbl.text = "Câmera: %s  [C ou 1-8]" % CameraRig.NAMES[race.camera.view]
 
 
 func _update_flags_hud() -> void:

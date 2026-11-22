@@ -9,6 +9,13 @@ const PRESETS := [
 	{"name": "Ultra", "msaa": Viewport.MSAA_8X, "scale": 1.0, "shadow": 8192, "shadow_dist": 480.0, "ssao": true, "ssr": true, "glow": true, "rain": 8000},
 ]
 
+## Céus de foto (Poly Haven, CC0): coluna do sol na foto, elevação do sol (graus), brilho
+const SKIES := [
+	{"file": "res://assets/sky/sky_clear.jpg", "sun_u": 0.6017, "elev": 48.6, "bright": 1.0, "glow": 1.0},
+	{"file": "res://assets/sky/sky_cloudy.jpg", "sun_u": 0.6016, "elev": 51.2, "bright": 0.8, "glow": 0.25},
+	{"file": "res://assets/sky/sky_overcast.jpg", "sun_u": 0.5911, "elev": 40.0, "bright": 0.62, "glow": 0.0},
+]
+
 var kind := 0                  # 0 seco, 1 chuva leve, 2 chuva forte
 var wetness := 0.0
 var rain := 0.0
@@ -29,15 +36,15 @@ func setup(p_kind: int, quality: int) -> void:
 	wetness = wetness_for(kind)
 	rain = [0.0, 0.45, 1.0][clampi(kind, 0, 2)]
 	var q: Dictionary = PRESETS[clampi(quality, 0, 3)]
-	# ---------------- céu
+	# ---------------- céu (foto 360° CC0; o sol da foto é alinhado com a luz direcional)
+	var sk: Dictionary = SKIES[clampi(kind, 0, 2)]
 	sky_mat = ShaderMaterial.new()
-	sky_mat.shader = load("res://shaders/sky.gdshader")
-	sky_mat.set_shader_parameter("cloud_cover", [0.42, 0.88, 1.0][kind])
-	sky_mat.set_shader_parameter("cloud_dark", [0.0, 0.45, 0.75][kind])
-	sky_mat.set_shader_parameter("brightness", [1.0, 0.7, 0.5][kind])
-	if kind > 0:
-		sky_mat.set_shader_parameter("zenith", Color(0.32, 0.36, 0.42))
-		sky_mat.set_shader_parameter("horizon", Color(0.55, 0.58, 0.62))
+	sky_mat.shader = load("res://shaders/sky_photo.gdshader")
+	sky_mat.set_shader_parameter("pano", load(sk["file"]))
+	sky_mat.set_shader_parameter("sun_u", sk["sun_u"])
+	sky_mat.set_shader_parameter("brightness", sk["bright"])
+	sky_mat.set_shader_parameter("sun_glow", sk["glow"])
+	sky_mat.set_shader_parameter("ground", Color(0.24, 0.27, 0.2) if kind == 0 else Color(0.2, 0.21, 0.2))
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
@@ -78,7 +85,7 @@ func setup(p_kind: int, quality: int) -> void:
 	add_child(world_env)
 	# ---------------- sol
 	sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-34.0, -35.0, 0.0)
+	sun.rotation_degrees = Vector3(-float(sk["elev"]), -35.0, 0.0)
 	sun.light_energy = [2.1, 0.7, 0.35][kind]
 	sun.light_color = Color(1.0, 0.94, 0.86)
 	sun.shadow_enabled = true

@@ -4,6 +4,53 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 5 — v0.5.0 (visual estilo F1 2006 + som sem estouro)
+
+Baseado no vídeo de referência (F1 2006 com mod, Silverstone): enquadramento, pista, cockpit, rodas e piloto.
+
+### Câmera
+- **Nova câmera "Clássica"** (tecla **8**): alta, logo atrás do capacete — vê o capacete embaixo, as mãos no
+  volante, as rodas dianteiras e a suspensão, como nos jogos de 2006. No V10 e no Lenda (sem halo) fica igual ao vídeo.
+
+### Pista e cenário
+- **Céu de foto 360°** (nuvens de verdade) com o sol da foto alinhado à luz do jogo; céus próprios para chuva
+  leve (nuvens carregadas) e chuva forte (nublado).
+- **Asfalto com textura real**, trilho de borracha mais escuro e **marcas de pneu** no traçado; faixas brancas nítidas.
+- **Zebras pintadas** com grão do asfalto e sujeira de borracha; **brita** com textura de cascalho real.
+- **Grama** mais escura e natural, com **listras de corte** largas.
+- **Arquibancadas novas**: degraus de concreto, cadeiras coloridas por setor, cobertura com pilares e
+  **público sentado em 3D** (milhares de torcedores com camisetas de cores variadas).
+- **Árvores de verdade** (copa de folhas recortadas, não mais "bolas") e **mata contínua no horizonte**.
+- Texturas e céus: Poly Haven, licença CC0 (ver `assets/CREDITOS.md`).
+
+### Carro e piloto
+- **Pneus com letreiro na lateral** (marca fictícia VELTRA CORSA R1) e faixa do composto pintada.
+- **Capacete pintado** com desenho gráfico e contorno (setas como no vídeo, faixa central, diagonais; o do
+  Beto Lenda com as faixas da homenagem), verniz brilhante.
+- **Luvas** de couro claro acolchoadas, punho longo com velcro na cor da equipe, palma de camurça; braços
+  dentro do cockpit (de cima só aparecem as luvas).
+- **Volante estilo 2006**: botões redondos coloridos com aro de alumínio, seletores, manoplas de camurça,
+  carbono em sarja; LCD verde no V10, tela colorida no 2026, volante simples no Lenda.
+- Pintura do carro sem serrilhado nas bordas das cores; equipe prateada com **pintura metálica**.
+
+### Correções
+- **Retrovisores pretos** na câmera nova e **com atraso** (atualizavam a 30 fps): agora uma câmera traseira
+  atualizada **todo quadro**, mesma posição interpolada da câmera principal — fluido, sem defasagem.
+- **Som estourado/chiado** em curvas e freadas: a mistura passava ~3 dB do limitador o tempo todo (ele vivia
+  "apertando"). Agora há folga e o limitador só pega picos raros (medido: 16,6% → 0% do tempo no teto).
+  Volume médio ~2,7 dB menor — se quiser, suba o Volume geral.
+- Pneu cantando virou um **guincho tonal** (antes era ruído de banda larga = chiado).
+- **Zebra** com baques graves (~38 por segundo a 180 km/h, como na referência) e **"tum" de lombada** ao subir
+  na zebra em velocidade.
+- **Motores V6, V8 e V12**: trechos gravados com timbre fora da curva (o som "trocava de motor" ao acelerar)
+  foram refeitos a partir dos vizinhos bons; V6 equalizado para o brilho de um carro 2026. V10 intacto.
+
+### Testes
+14/14 cenários (padrão e sua configuração), pilotagem (deriva máx 7,1°, 0 rodadas), brita, corridas de
+20 carros em Serra Azul e Mônaco. Gravação de áudio: 0 amostras estouradas.
+
+---
+
 ## Patch 4 — v0.4.0 (categorias, visual e IA no 100%)
 
 ### IA no 100% (você dava volta nela)

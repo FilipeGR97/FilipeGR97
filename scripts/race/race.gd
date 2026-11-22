@@ -53,7 +53,7 @@ var _rng := RandomNumberGenerator.new()
 var _fuel_per_lap := 1.3
 var _sprays := {}
 var _best_overall := INF
-var _num_down := [false, false, false, false, false, false, false]
+var _num_down := [false, false, false, false, false, false, false, false]
 # bandeiras e Virtual Safety Car
 var yellow := [false, false, false]
 var vsc := false

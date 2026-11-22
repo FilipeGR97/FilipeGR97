@@ -35,7 +35,7 @@ const TEAMS := [
 	{"name": "Titan Racing Team", "chassis": "TR-26", "nick": "Colossus", "base": "Milton Keynes (GBR)", "short": "TIT", "engine": "kestrel", "power": 0.998, "aero": 1.000,
 		"primary": Color(0.06, 0.1, 0.32), "secondary": Color(0.95, 0.15, 0.2), "accent": Color(1.0, 0.8, 0.0),
 		"drivers": [{"name": "Max Delacroix", "code": "DEL", "num": 1, "skill": 1.0}, {"name": "Kenji Mori", "code": "MRI", "num": 22, "skill": 0.965}]},
-	{"name": "Silverline Motorsport", "chassis": "SM-26", "nick": "Arrow", "base": "Brackley (GBR)", "short": "SIL", "engine": "orion", "power": 0.997, "aero": 0.99,
+	{"name": "Silverline Motorsport", "chassis": "SM-26", "nick": "Arrow", "base": "Brackley (GBR)", "short": "SIL", "engine": "orion", "power": 0.997, "aero": 0.99, "metal": 1.0,
 		"primary": Color(0.72, 0.75, 0.78), "secondary": Color(0.0, 0.62, 0.55), "accent": Color(0.05, 0.05, 0.06),
 		"drivers": [{"name": "Henry Ashcombe", "code": "ASH", "num": 63, "skill": 0.98}, {"name": "Luca Ferrandi", "code": "FER", "num": 12, "skill": 0.97}]},
 	{"name": "Falcon Green F1", "chassis": "FG-26", "nick": "Peregrine", "base": "Silverstone (GBR)", "short": "FAL", "engine": "helix", "power": 0.99, "aero": 0.985,

@@ -2,8 +2,8 @@ class_name CameraRig
 extends Camera3D
 ## Câmeras: cockpit (olhos do piloto, com halo), T-cam, bico, perseguição perto/longe e TV (beira da pista).
 
-enum View { HELMET, COCKPIT, TCAM, NOSE, CHASE, CHASE_FAR, TV }
-const NAMES := ["Atrás do piloto", "Olhos do piloto", "T-Cam", "Bico", "Perseguição", "Perseguição (longe)", "TV"]
+enum View { HELMET, COCKPIT, TCAM, NOSE, CHASE, CHASE_FAR, TV, CLASSIC }
+const NAMES := ["Atrás do piloto", "Olhos do piloto", "T-Cam", "Bico", "Perseguição", "Perseguição (longe)", "TV", "Clássica (alta, atrás do capacete)"]
 
 var target: Car
 var track: Track
@@ -62,12 +62,14 @@ func _process(dt: float) -> void:
 			fov = 40.0
 			return
 	match view:
-		View.HELMET, View.COCKPIT, View.TCAM, View.NOSE:
+		View.HELMET, View.COCKPIT, View.TCAM, View.NOSE, View.CLASSIC:
 			var local := CarModel.EYE
 			if view == View.HELMET:
 				local = CarModel.HELMETCAM
 			if view == View.TCAM:
 				local = CarModel.TCAM
+			elif view == View.CLASSIC:
+				local = CarModel.CLASSICCAM
 			elif view == View.NOSE:
 				local = CarModel.NOSECAM
 			# cabeça balança com as forças G
@@ -92,6 +94,8 @@ func _process(dt: float) -> void:
 				rotate_object_local(Vector3.RIGHT, -0.11)
 			elif view == View.HELMET:
 				rotate_object_local(Vector3.RIGHT, -0.15)
+			elif view == View.CLASSIC:
+				rotate_object_local(Vector3.RIGHT, -0.25)
 			fov = fov_set + (0.0 if view <= View.COCKPIT else 6.0)
 		View.CHASE, View.CHASE_FAR:
 			var dist := 6.2 if view == View.CHASE else 10.0
