@@ -11,7 +11,7 @@ Gerado de `scripts/data/teams.gd`. Todos os carros seguem a mesma ficha de regul
 | Titan Racing Team | TR-26 | Colossus | Milton Keynes (GBR) | Kestrel KS-8 (V8 a 90°) | Max Delacroix #1, Kenji Mori #22 | 98.8% | 100.0% |
 | Silverline Motorsport | SM-26 | Arrow | Brackley (GBR) | Orion OR-6H (V6 a 90°) | Henry Ashcombe #63, Luca Ferrandi #12 | 99.2% | 99.0% |
 | Falcon Green F1 | FG-26 | Peregrine | Silverstone (GBR) | Helix HX-12 (V12 a 65°) | Diego Salvatierra #14, Connor Blake #18 | 97.5% | 98.5% |
-| Azure Motorsport | AZ-26 | Riviera | Enstone (GBR) | Helix HX-12 (V12 a 65°) | Julien Marchand #10, Tomás Echeverría #43 | 97.0% | 98.0% |
+| Onyx Grand Prix | OX-26 | Noir | Enstone (GBR) | Helix HX-12 (V12 a 65°) | Julien Marchand #10, Tomás Echeverría #43 | 97.0% | 98.0% |
 | Corsa Bianca | CB-26 | Fantasma | Faenza (ITA) | Valkyr VK-10 (V10 a 90°) | Emil Lindqvist #31, Aiden Price #87 | 99.0% | 97.5% |
 | Nova Racing | NR-26 | Supernova | Kannapolis (EUA) | Kestrel KS-8 (V8 a 90°) | Karim Nassar #6, Finn O'Rourke #30 | 98.2% | 97.8% |
 | Granite Racing | GR-26 | Monolith | Grove (GBR) | Orion OR-6H (V6 a 90°) | Viktor Novak #23, Javier Montes #55 | 99.0% | 97.0% |

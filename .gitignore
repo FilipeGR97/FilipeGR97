@@ -26,3 +26,7 @@ Sonsmotor/
 *.webm
 *.m4a
 *.mp3
+
+# modelos de terceiros (só referência visual, não usar no jogo)
+*.usdz
+2026-redbull-rb22.zip

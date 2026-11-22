@@ -4,6 +4,40 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 6 — v0.6.0 (carros e pinturas)
+
+Inspirado no nível de detalhe dos carros de referência (cor, acabamento, adesivos) — feito no nosso modelo:
+os 3 modelos enviados vieram extraídos dos jogos da EA/Codemasters (nomes internos "gp21", "RBRWHEEL10"...),
+então serviram só de referência visual e não entram no jogo.
+
+### Pinturas novas (cores que existem de verdade, patrocinadores fictícios)
+| Equipe | Pintura | Acabamento | Patrocinador |
+|---|---|---|---|
+| Vortex | vermelho em cima, preto embaixo, filete branco | brilhante | CORVA |
+| Aurora | laranja papaia e grafite, detalhe azul | brilhante | ORBITAL |
+| Titan | azul-marinho com lâmina vermelha e amarela | **fosco** com textura | TAURO |
+| Silverline | preto com campo de estrelas prateadas em degradê e faixa verde-petróleo | brilhante | PETRA |
+| Falcon | verde inglês com faixa creme e dourado | **metálico** | TERRA OIL |
+| **Onyx** (era Azure) | todo preto com filetes dourados | brilhante | AURUM |
+| Corsa Bianca | branco que vira azul-marinho em degradê de pontos | brilhante | VISTA |
+| Nova | branco em cima, preto embaixo, filete vermelho | brilhante | NORTHWIND |
+| Granite | azul-escuro que vira azul-claro em pontos | brilhante | ATLAS |
+| Selva | branco, preto e amarelo fluorescente | brilhante | BRAVO TEL |
+| Leggenda | vermelho e branco com a seta | brilhante | LUMEN |
+
+Sem rosa e sem verde-limão.
+
+### Detalhes
+- **Adesivos** projetados na carroceria: placa de inspeção, seta de resgate, aviso de alta tensão, tira técnica,
+  quadriculado na tampa do motor, fornecedor de pneus no bico, parafusos nas placas das asas.
+- **Rodas**: borda do aro usinada, **calota de carbono** (2026/elétrico) ou **aro de raios prateado**
+  (V10/Lenda) e **porca central** na cor de destaque da equipe — acabou o "buraco preto" no meio da roda.
+
+### Testes
+14/14 cenários, corridas em Serra Azul e Mônaco (Lenda) sem erros; FPS igual ao Patch 5.1 (medido lado a lado).
+
+---
+
 ## Patch 5.1 — v0.5.1 (motores da gravação nova)
 
 - **V12, V8 e V6** refeitos a partir da gravação "F1 sons dos motores" (volta onboard de cada motor):
@@ -16,7 +50,7 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 - Ferramentas: `tools/build_engine_samples.py --fonte 2` (nova gravação, trocas) e `tools/engine_loop_fix.py`
   (acha e refaz automaticamente loops com timbre fora da curva).
 
-**Teste:** escolha equipes com V12 (Falcon, Azure, Selva, Leggenda), V8 (Titan, Nova) e V6 (Aurora, Silverline,
+**Teste:** escolha equipes com V12 (Falcon, Onyx, Selva, Leggenda), V8 (Titan, Nova) e V6 (Aurora, Silverline,
 Granite) e diga qual motor ficou bom ou ruim — consigo voltar qualquer um para a versão anterior na hora.
 
 ---

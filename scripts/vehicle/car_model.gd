@@ -23,6 +23,7 @@ var wheel_root: Array = []
 var wheel_steer: Array = []
 var wheel_spin: Array = []
 var body: MeshInstance3D
+var _nut_mat: StandardMaterial3D
 var _tyres: Array = []          # MeshInstance3D dos pneus (cor do composto por instância)
 var _compound_col := Color(1.0, 0.82, 0.05)
 var _brake_mat: StandardMaterial3D
@@ -376,9 +377,9 @@ static func mat(key: String) -> Material:
 			m = al
 		"rim_classic":
 			var rc := StandardMaterial3D.new()
-			rc.albedo_color = Color(0.78, 0.78, 0.8)
-			rc.metallic = 0.9
-			rc.roughness = 0.22
+			rc.albedo_color = Color(0.8, 0.8, 0.82)
+			rc.metallic = 0.55
+			rc.roughness = 0.32
 			m = rc
 		"rim":
 			var r := StandardMaterial3D.new()
@@ -412,6 +413,39 @@ static func _carbon_tex() -> ImageTexture:
 			img.set_pixel(x, y, Color(v, v * 1.03, v * 1.1))
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
+
+
+## Face da roda no espaço do pneu (eixo X = eixo da roda; out_s = lado de fora).
+static func _wheel_face(rr: float, W: float, out_s: float, spokes: bool) -> ArrayMesh:
+	var lip := Acc.new()
+	var main := Acc.new()
+	var back := Acc.new()
+	var ax := W * 0.49 * out_s
+	# borda do aro (anel usinado rente à lateral do pneu)
+	lathe_x(lip, [[rr * 0.86, ax - out_s * 0.03], [rr * 1.04, ax - out_s * 0.03], [rr * 1.04, ax], [rr * 0.86, ax]], 48)
+	if spokes:
+		# aro clássico: raios do cubo até a borda, fundo escuro (o freio aparece entre os raios)
+		var n_sp := 6
+		for k in n_sp:
+			var an := TAU * k / n_sp
+			var dirv := Vector3(0, cos(an), sin(an))
+			var p0 := Vector3(ax - out_s * 0.05, 0, 0) + dirv * rr * 0.2
+			var p1 := Vector3(ax - out_s * 0.012, 0, 0) + dirv * rr * 0.9
+			cyl(main, p0, p1, rr * 0.1, 8, 1.7)
+		lathe_x(main, [[0.0, ax - out_s * 0.07], [rr * 0.24, ax - out_s * 0.07], [rr * 0.24, ax - out_s * 0.03], [0.0, ax - out_s * 0.03]], 24)
+		lathe_x(back, [[0.0, ax - out_s * 0.16], [rr * 0.92, ax - out_s * 0.16], [rr * 0.92, ax - out_s * 0.15], [0.0, ax - out_s * 0.15]], 32)
+	else:
+		# calota de carbono quase plana (regulamento atual), levemente côncava
+		lathe_x(main, [[0.0, ax - out_s * 0.05], [rr * 0.87, ax - out_s * 0.025], [rr * 0.87, ax - out_s * 0.018], [0.0, ax - out_s * 0.04]], 48)
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, lip.to_arrays())
+	m.surface_set_material(0, mat("alu"))
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, main.to_arrays())
+	m.surface_set_material(1, mat("rim_classic") if spokes else mat("carbon"))
+	if not back.v.is_empty():
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, back.to_arrays())
+		m.surface_set_material(2, mat("dark"))
+	return m
 
 
 static func _rim_tex() -> ImageTexture:
@@ -452,9 +486,16 @@ func build(team: Dictionary, number: int, player: bool, driver: Dictionary = {})
 		body.set_instance_shader_parameter("primary", team["primary"])
 		body.set_instance_shader_parameter("secondary", team["secondary"])
 		body.set_instance_shader_parameter("accent", team["accent"])
-		body.set_instance_shader_parameter("pattern", 3.0 if team.get("legend", false) else float(Teams.TEAMS.find(team) % 3))
-		body.set_instance_shader_parameter("metal", float(team.get("metal", 0.0)))
+		_livery_style(body, team)
 	_build_moving_parts(team)
+	# porca central das rodas: cor de destaque da equipe (como nos carros reais)
+	_nut_mat = StandardMaterial3D.new()
+	var nc: Color = team["accent"]
+	if nc.get_luminance() < 0.1:
+		nc = team["secondary"]
+	_nut_mat.albedo_color = nc
+	_nut_mat.metallic = 0.7
+	_nut_mat.roughness = 0.3
 	_build_wheels()
 	_build_cockpit(team, player, driver)
 	_build_lights()
@@ -800,11 +841,19 @@ func _build_moving_parts(team: Dictionary) -> void:
 		_flap_f.append(node)
 
 
+## Estilo de pintura (grafismo) e acabamento (0 brilhante, 1 fosco, 2 metálico) da equipe.
+static func _livery_style(mi: GeometryInstance3D, team: Dictionary) -> void:
+	var sty := float(team.get("style", 3 if team.get("legend", false) else 0))
+	mi.set_instance_shader_parameter("pattern", sty)
+	mi.set_instance_shader_parameter("finish", float(team.get("finish", 0)))
+	mi.set_instance_shader_parameter("metal", 0.0)
+
+
 func _apply_livery(mi: GeometryInstance3D, team: Dictionary) -> void:
 	mi.set_instance_shader_parameter("primary", team["primary"])
 	mi.set_instance_shader_parameter("secondary", team["secondary"])
 	mi.set_instance_shader_parameter("accent", team["accent"])
-	mi.set_instance_shader_parameter("metal", float(team.get("metal", 0.0)))
+	_livery_style(mi, team)
 
 
 func _build_wheels() -> void:
@@ -863,17 +912,26 @@ func _build_wheels() -> void:
 		barrel.mesh = cm
 		barrel.rotation.z = PI * 0.5
 		spin.add_child(barrel)
+		# face da roda (gira com o pneu): borda do aro usinada, calota de carbono (2026/elétrico) ou
+		# raios prateados (clássicos) e porca central na cor de destaque da equipe
+		var out_s := -1.0 if left else 1.0
+		var fkey := "wface_%s_%s_%d" % [variant, "f" if front else "r", int(out_s)]
+		if not _cache.has(fkey):
+			_cache[fkey] = _wheel_face(R * rim_k, W, out_s, variant == "v10" or variant == "lenda")
 		var face := MeshInstance3D.new()
-		var fcm := CylinderMesh.new()
-		fcm.top_radius = R * rim_k
-		fcm.bottom_radius = R * rim_k
-		fcm.height = 0.01
-		fcm.radial_segments = 32
-		fcm.material = mat("rim_classic") if variant == "v10" or variant == "lenda" else mat("rim")
-		face.mesh = fcm
-		face.rotation.z = PI * 0.5
-		face.position.x = (W * 0.3) * (-1.0 if left else 1.0)
+		face.mesh = _cache[fkey]
 		spin.add_child(face)
+		var nut := MeshInstance3D.new()
+		var nm := CylinderMesh.new()
+		nm.top_radius = 0.034
+		nm.bottom_radius = 0.05
+		nm.height = 0.05
+		nm.radial_segments = 6
+		nm.material = _nut_mat
+		nut.mesh = nm
+		nut.rotation.z = -PI * 0.5 * out_s
+		nut.position.x = out_s * (W * 0.46)
+		spin.add_child(nut)
 		# sulcos dos pneus da era V10 (4 sulcos) / desenho do pneu do elétrico
 		if variant == "v10" or variant == "eletrico":
 			var grooves := [-0.3, -0.1, 0.1, 0.3] if variant == "v10" else [-0.22, 0.0, 0.22]
@@ -1298,11 +1356,12 @@ func _build_number(number: int, team: Dictionary) -> void:
 	nose.rotation = Vector3(-PI * 0.5 + 0.12, 0.0, 0.0)
 	add_child(nose)
 	_build_sponsors(team)
+	_build_decals()
 
 
 ## Patrocinadores fictícios: principal no sidepod e na asa traseira, secundários no bico,
 ## na tampa do motor e nas placas da asa dianteira. Escolhidos pelo nome da equipe (sempre iguais).
-const SPONSORS := ["NEXA", "VOLTEX", "ORBITAL", "KAIROS", "PRISMA", "TERRA OIL", "MERIDIAN", "SOLARA", "QUANTA", "AXION", "LUMEN", "BRAVO TEL", "ZENTRA", "HALCYON", "RUBIX", "NORTHWIND"]
+const SPONSORS := ["NEXA", "VOLTEX", "ORBITAL", "KAIROS", "PRISMA", "TERRA OIL", "MERIDIAN", "SOLARA", "QUANTA", "AXION", "LUMEN", "BRAVO TEL", "ZENTRA", "HALCYON", "RUBIX", "NORTHWIND", "TAURO", "PETRA", "CORVA", "AURUM", "VISTA", "ATLAS"]
 
 
 func _sponsor_label(text: String, size: int, col: Color, pos: Vector3, rot: Vector3, outline := Color(0, 0, 0, 0)) -> void:
@@ -1323,7 +1382,7 @@ func _sponsor_label(text: String, size: int, col: Color, pos: Vector3, rot: Vect
 
 func _build_sponsors(team: Dictionary) -> void:
 	var h := absi(hash(String(team["name"])))
-	var title: String = SPONSORS[h % SPONSORS.size()]
+	var title: String = team.get("title", SPONSORS[h % SPONSORS.size()])
 	var second: String = SPONSORS[(h / 7 + 3) % SPONSORS.size()]
 	var third: String = SPONSORS[(h / 13 + 7) % SPONSORS.size()]
 	if second == title:
@@ -1346,6 +1405,48 @@ func _build_sponsors(team: Dictionary) -> void:
 	_sponsor_label(title, 170, on_prim, G(-2.42, 0.93 + rdy, 0.0), Vector3(0.2, PI, 0))
 	# bico (atrás do número)
 	_sponsor_label(second, 90, on_prim, G(1.55, 0.6 + {"v10": 0.12, "lenda": -0.03}.get(variant, 0.0), 0.0), Vector3(-PI * 0.5 + 0.18, 0, 0))
+
+
+## Adesivos e detalhes projetados na carroceria (decalques): placa de inspeção, seta de resgate,
+## aviso de alta tensão, tira técnica, quadriculado na tampa do motor, fornecedor de pneus no bico e
+## parafusos nas placas das asas. Somem com a distância (custo baixo com 20 carros).
+static var _decal_tex := {}
+
+
+func _decal(tex: String, pos: Vector3, size: Vector3, basis: Basis) -> void:
+	if not _decal_tex.has(tex):
+		_decal_tex[tex] = load("res://assets/decals/%s.png" % tex)
+	var d := Decal.new()
+	d.texture_albedo = _decal_tex[tex]
+	d.size = size
+	d.transform = Transform3D(basis, pos)
+	d.normal_fade = 0.4
+	d.upper_fade = 0.05
+	d.lower_fade = 0.05
+	d.distance_fade_enabled = true
+	d.distance_fade_begin = 30.0
+	d.distance_fade_length = 15.0
+	add_child(d)
+
+
+func _build_decals() -> void:
+	if OS.get_cmdline_user_args().has("nodecals"):
+		return
+	var rdy: float = {"2026": 0.0, "v10": 0.07, "lenda": 0.2, "eletrico": -0.17}.get(variant, 0.0)
+	var nose_dy: float = {"v10": 0.12, "lenda": -0.03}.get(variant, 0.0)
+	for s in [-1.0, 1.0]:
+		# projeção lateral: X da textura ao longo do carro (legível de fora), Y para fora, Z para baixo
+		var side := Basis(Vector3(0, 0, -s), Vector3(s, 0, 0), Vector3(0, -1, 0))
+		_decal("plate", G(0.38, 0.47, s * 0.62), Vector3(0.15, 0.45, 0.075), side)
+		_decal("rescue", G(0.02, 0.66, s * 0.3), Vector3(0.1, 0.3, 0.1), side)
+		_decal("warning", G(-0.8, 0.58, s * 0.3), Vector3(0.08, 0.35, 0.08), side)
+		_decal("techstrip", G(-0.55, 0.37, s * 0.62), Vector3(0.4, 0.4, 0.05), side)
+		_decal("veltra", G(1.95, 0.5 + nose_dy, s * 0.15), Vector3(0.16, 0.25, 0.04), side)
+		_decal("bolts", G(2.78, 0.12, s * 0.95), Vector3(0.14, 0.12, 0.035), side)
+		_decal("bolts", G(-2.3, 0.62 + rdy, s * 0.52), Vector3(0.14, 0.12, 0.035), side)
+	# tira quadriculada ao longo do topo da tampa do motor (projeção de cima)
+	var top := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
+	_decal("checker", G(-1.55, 0.75, 0.0), Vector3(0.5, 0.5, 0.05), top)
 
 
 # ======================================================================= atualização
