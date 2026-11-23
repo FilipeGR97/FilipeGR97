@@ -491,11 +491,13 @@ static func _kerb_stream() -> AudioStream:
 	rng.seed = 7
 	var buf := PackedFloat32Array()
 	buf.resize(LOOP_N + XF)
+	@warning_ignore("integer_division")
 	var period := RATE / 40
 	var rattle := 0.0
 	for i in LOOP_N + XF:
 		var ph := i % period
 		var tt := float(ph) / RATE
+		@warning_ignore("integer_division")
 		var hit := float(i / period)
 		var var_k := 0.85 + 0.3 * fposmod(sin(hit * 12.9898) * 43758.5, 1.0)
 		var thump := sin(TAU * 62.0 * tt) * exp(-tt * 55.0) * 1.0

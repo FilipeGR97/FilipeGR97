@@ -310,6 +310,7 @@ func _compute_racing_line() -> void:
 	# margem do centro do carro até a borda: o traçado usa a pista toda (pneu raspando a zebra)
 	var lim := half_width - float(def.get("line_margin", line_margin))
 	var step := 4
+	@warning_ignore("integer_division")
 	var m := n / step
 	var o := PackedFloat32Array()
 	o.resize(m)
@@ -589,7 +590,7 @@ func _road_material(lines: bool) -> ShaderMaterial:
 	return m
 
 
-func _terrain_material(a: Color, b: Color, scale: float, stripes: float, rough: float, kind := "grass") -> ShaderMaterial:
+func _terrain_material(a: Color, b: Color, tex_scale: float, stripes: float, rough: float, kind := "grass") -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/terrain.gdshader")
 	m.set_shader_parameter("noise_tex", _noise_tex)
@@ -605,7 +606,7 @@ func _terrain_material(a: Color, b: Color, scale: float, stripes: float, rough: 
 		m.set_shader_parameter("normal_depth", 1.0)
 	m.set_shader_parameter("color_a", a)
 	m.set_shader_parameter("color_b", b)
-	m.set_shader_parameter("scale", scale)
+	m.set_shader_parameter("scale", tex_scale)
 	m.set_shader_parameter("stripes", stripes)
 	m.set_shader_parameter("roughness_base", rough)
 	m.set_shader_parameter("wetness", wetness)
@@ -841,14 +842,14 @@ func _build_surfaces() -> void:
 	_add_collider(grass.faces, Surface.GRASS)
 	_add_collider(gravel.faces, Surface.GRAVEL)
 	# chão infinito
-	var ground := StaticBody3D.new()
-	ground.set_meta("surface", Surface.GRASS)
+	var ground_body := StaticBody3D.new()
+	ground_body.set_meta("surface", Surface.GRASS)
 	var wb := CollisionShape3D.new()
 	var wbs := WorldBoundaryShape3D.new()
 	wbs.plane = Plane(Vector3.UP, -0.6)
 	wb.shape = wbs
-	ground.add_child(wb)
-	add_child(ground)
+	ground_body.add_child(wb)
+	add_child(ground_body)
 	var gm := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(9000, 9000)
@@ -1042,7 +1043,6 @@ func _build_pit_buildings() -> void:
 	# prédio dos boxes
 	var mid_u := pit_len * 0.5
 	var s_mid := wrap_s(pit_entry_s + mid_u)
-	var i_mid := idx_at_s(s_mid)
 	var b_len := pit_len - 2.0 * pit_taper + 60.0
 	var lat_b := (half_width + APRON + PIT_ZONE_W + 7.0) * sd
 	var concrete := StandardMaterial3D.new()
@@ -1242,6 +1242,7 @@ func _build_scenery() -> void:
 	tv_cams.clear()
 	var step := int(220.0 / ds)
 	for i in range(0, n, step):
+		@warning_ignore("integer_division")
 		var side := 1 if (i / step) % 2 == 0 else 0
 		# rua: câmera sobre a calçada (atrás do guard-rail), não dentro dos prédios
 		var off := 2.0 if street else 6.0
@@ -1364,11 +1365,11 @@ func _spectators(spots: Array, facing: Vector3, rng: RandomNumberGenerator) -> v
 	mm.use_custom_data = true
 	mm.mesh = _person_mesh
 	mm.instance_count = spots.size()
-	var basis := Basis.looking_at(Vector3(facing.x, 0.0, facing.z).normalized(), Vector3.UP)
+	var bas := Basis.looking_at(Vector3(facing.x, 0.0, facing.z).normalized(), Vector3.UP)
 	var shirts := [Color(0.85, 0.1, 0.1), Color(0.95, 0.95, 0.95), Color(0.1, 0.2, 0.6), Color(1.0, 0.75, 0.0), Color(0.1, 0.1, 0.12), Color(0.0, 0.5, 0.3), Color(1.0, 0.45, 0.0), Color(0.5, 0.75, 0.95)]
 	for k in spots.size():
 		var sc := rng.randf_range(0.9, 1.08)
-		var b := basis.rotated(Vector3.UP, rng.randf_range(-0.35, 0.35)).scaled(Vector3(sc, sc, sc))
+		var b := bas.rotated(Vector3.UP, rng.randf_range(-0.35, 0.35)).scaled(Vector3(sc, sc, sc))
 		mm.set_instance_transform(k, Transform3D(b, spots[k]))
 		var c: Color = shirts[rng.randi() % shirts.size()]
 		mm.set_instance_custom_data(k, c.lightened(rng.randf_range(-0.1, 0.15)))
@@ -1727,10 +1728,10 @@ func _street_clear(p: Vector2, grid: Dictionary, margin: float) -> bool:
 func _buildings(rng: RandomNumberGenerator) -> void:
 	var grid := {}
 	for i in n:
-		var key := Vector2i(floori(pos[i].x / 25.0), floori(pos[i].z / 25.0))
-		if not grid.has(key):
-			grid[key] = []
-		grid[key].append(i)
+		var cell_key := Vector2i(floori(pos[i].x / 25.0), floori(pos[i].z / 25.0))
+		if not grid.has(cell_key):
+			grid[cell_key] = []
+		grid[cell_key].append(i)
 	var open: Array = def.get("open", [])
 	var stands: Array = def.get("grandstands", [])
 	var walls := Builder.new()
@@ -1865,6 +1866,7 @@ func _tunnels() -> void:
 		# luz dentro do túnel (poucas, sem sombra)
 		if _quality >= 1:
 			var step := int(45.0 / ds)
+			@warning_ignore("integer_division")
 			for q in range(i0 + step / 2, i1, step):
 				var li := OmniLight3D.new()
 				li.position = point(q % n, 0.0, hgt - 0.6)

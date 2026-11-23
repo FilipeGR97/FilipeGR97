@@ -4,6 +4,51 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 7.2 — v0.7.2 (checkup geral: avisos, box, largada e briga com a IA)
+
+### Avisos do Godot (painel "Erros", itens amarelos)
+- Eram **avisos**, não erros, e nenhum era bug ativo, mas foram todos limpos: **0 avisos** em 28 scripts.
+  Sobras de patches antigos removidas, divisões inteiras marcadas como intencionais, variáveis renomeadas.
+- Nova ferramenta `tools/check_warnings.sh`: lista todos os avisos de uma vez, sem mexer no editor aberto.
+- Câmera do menu não gera mais o aviso de "Physics interpolation".
+
+### Bugs de mecânica corrigidos
+- **Saída do box**: o piloto automático do pit lane acelerava 100% de pneu frio, sem controle de tração nem
+  contra-esterço. Na Lenda, quase todo carro que parava no box rodava e batia no muro logo depois da saída
+  (asa nova destruída). Agora alivia o pé quando a roda patina e corrige a traseira. Vale para o seu carro
+  também (o pit lane é pilotado automaticamente).
+- **Largada em fila indiana**: no apagar das luzes, todas as IAs miravam o traçado ideal ao mesmo tempo.
+  Agora cada uma sai na sua coluna do grid e briga lado a lado até a 1ª frenagem.
+- **IA forçando ultrapassagem**: se você fechasse a porta, ela insistia no mesmo lado e batia. Agora ela
+  prevê o seu movimento, só sai para o lado onde cabe um carro, e com a porta fechada **tira o pé e fica na
+  cola** (no vácuo) esperando outra chance. Lado a lado sem espaço, quem está atrás cede.
+- **Carros travados um no outro** (reportado jogando em Mônaco): dois carros quase emparelhados podiam ceder
+  um para o outro até parar. Corrigido, e carro parado/batido à frente agora é contornado devagar (antes a
+  fila parava atrás dele).
+- **Resgate de carro preso** ("voltar à pista", também o seu): procurava sempre o mesmo ponto da pista, então
+  dois carros presos juntos eram recolocados **um dentro do outro** e travavam em ciclo (dezenas de resgates,
+  Safety Car virtual por voltas). Agora procura uma vaga livre.
+
+### Resultados medidos (corridas de 2 voltas, 20 carros, Serra Azul)
+| | batidas fortes por corrida — antes | depois |
+|---|---|---|
+| Lenda | 10, 17, 26 | 0, 1, 5 |
+| F1 2026 | 14, 2, 7 | 3, 4, 2 |
+
+### Testes novos
+- `porta_fechada`: IA mais rápida atrás, você fecha a porta → ela não pode encostar e tem que ficar na cola.
+- `porta_aberta`: com espaço, ela tem que ultrapassar.
+- Ferramentas de teste: `pitall` (todos param no box), `startlog` (formação da largada), `aitrace=COD`
+  ou `aitrace=lento` (o que a IA vê e por que freia), `impactlog` agora com tempo e posição, e `[preso]`.
+
+### Para testar
+1. Largada em qualquer pista: as IAs devem sair espalhadas e disputar a 1ª curva.
+2. Feche a porta de uma IA mais rápida numa reta: ela deve frear e ficar atrás, sem bater.
+3. Lenda com pit stop: a saída do box sem rodar.
+4. Mônaco: sem carros travados nem Safety Car virtual eterno.
+
+---
+
 ## Patch 7.1 — v0.7.1 (MP4/5 na Lenda, capacete e luvas de verdade)
 
 - **Categoria Lenda** agora usa o **McLaren MP4/5 (1989)** (VeCarz, CC BY 4.0), convertido do .usdz por

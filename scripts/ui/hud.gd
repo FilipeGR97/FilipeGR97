@@ -72,7 +72,7 @@ var _elements: Array = []
 
 
 ## Ancora um elemento num ponto da tela (ax, ay em 0..1) com deslocamento e direção de crescimento.
-func _place(c: Control, ax: float, ay: float, ox: float, oy: float, gx: int, gy: int, toggles := true) -> void:
+func _place(c: Control, ax: float, ay: float, ox: float, oy: float, gx: Control.GrowDirection, gy: Control.GrowDirection, toggles := true) -> void:
 	root.add_child(c)
 	c.anchor_left = ax
 	c.anchor_right = ax
@@ -368,10 +368,11 @@ func message(text: String, color := Color.WHITE, time := 2.5) -> void:
 	_msg_t = time
 
 
-func set_lights(n_on: int, show: bool) -> void:
-	_lights_box.visible = show
+func set_lights(n_on: int, vis: bool) -> void:
+	_lights_box.visible = vis
 	for i in _light_dots.size():
 		var st: StyleBoxFlat = _light_dots[i]
+		@warning_ignore("integer_division")
 		st.bg_color = Color(1.0, 0.06, 0.04) if (i / 2) < n_on else Color(0.2, 0.03, 0.03)
 
 
@@ -430,6 +431,7 @@ func _update_dash() -> void:
 		var st: StyleBoxFlat = _leds[k]
 		var on := frac > float(k) / 15.0
 		var col := Color(0.1, 0.95, 0.3) if k < 5 else (Color(1.0, 0.1, 0.1) if k < 10 else Color(0.35, 0.4, 1.0))
+		@warning_ignore("integer_division")
 		if frac > 0.98 and int(Time.get_ticks_msec() / 70) % 2 == 0:
 			col = Color(0.35, 0.4, 1.0)
 		st.bg_color = col if on else Color(0.15, 0.15, 0.17)

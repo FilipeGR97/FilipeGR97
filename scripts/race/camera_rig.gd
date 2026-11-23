@@ -14,7 +14,6 @@ var _chase_dir := Vector3.FORWARD
 var _head := Vector3.ZERO
 var _shake_t := 0.0
 var _tv_idx := -1
-var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
@@ -79,9 +78,9 @@ func _process(dt: float) -> void:
 			if view != View.NOSE:
 				local += target.model.cam_off
 			var pos := mxf * (local + _head)
-			var basis := mxf.basis.orthonormalized()
+			var bas := mxf.basis.orthonormalized()
 			if look_back:
-				basis = basis.rotated(basis.y, PI)
+				bas = bas.rotated(bas.y, PI)
 			# vibração
 			_shake_t += dt
 			var kerb := 0.0
@@ -90,8 +89,8 @@ func _process(dt: float) -> void:
 				if wh.grounded and wh.surface != Track.Surface.ASPHALT:
 					kerb = 1.0
 			var amp := (0.0006 * clampf(spd / 90.0, 0.0, 1.0) + 0.004 * kerb * clampf(spd / 30.0, 0.0, 1.0)) * (1.0 if view <= View.COCKPIT else 0.5)
-			pos += basis.y * sin(_shake_t * 61.0) * amp + basis.x * sin(_shake_t * 47.0) * amp * 0.6
-			global_transform = Transform3D(basis, pos)
+			pos += bas.y * sin(_shake_t * 61.0) * amp + bas.x * sin(_shake_t * 47.0) * amp * 0.6
+			global_transform = Transform3D(bas, pos)
 			if view == View.COCKPIT:
 				rotate_object_local(Vector3.RIGHT, -0.11)
 			elif view == View.HELMET:

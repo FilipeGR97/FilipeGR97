@@ -213,7 +213,7 @@ func _setup_input() -> void:
 
 
 # ---------------------------------------------------------------- utilidades
-static func fmt_time(t: float, plus := false) -> String:
+func fmt_time(t: float, plus := false) -> String:
 	if t < 0.0 or is_inf(t) or is_nan(t):
 		return "--:--.---"
 	var m := int(t / 60.0)

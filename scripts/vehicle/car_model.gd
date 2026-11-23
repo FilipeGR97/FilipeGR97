@@ -70,7 +70,6 @@ var _steer_node: Node3D
 var _gear_label: Label3D
 var _led_mats: Array = []
 var _aero_t := 0.0
-var _rain_t := 0.0
 var _rain_on := false
 var _damage := 0.0
 var variant := "2026"            # modelo da categoria: 2026, v10, lenda, eletrico
@@ -84,7 +83,7 @@ class Acc:
 	var nrm := PackedVector3Array()
 	var idx := PackedInt32Array()
 
-	func add(verts: PackedVector3Array, tris: PackedInt32Array, smooth := true) -> void:
+	func add(verts: PackedVector3Array, tris: PackedInt32Array, _smooth := true) -> void:
 		var vol := 0.0
 		for t in range(0, tris.size(), 3):
 			vol += verts[tris[t]].dot(verts[tris[t + 1]].cross(verts[tris[t + 2]]))
@@ -434,7 +433,9 @@ static func _carbon_tex() -> ImageTexture:
 	var img := Image.create(n, n, true, Image.FORMAT_RGB8)
 	for y in n:
 		for x in n:
+			@warning_ignore("integer_division")
 			var cx := x / cell
+			@warning_ignore("integer_division")
 			var cy := y / cell
 			var horiz := ((cx + cy) % 4) < 2
 			var fx := float(x % cell) / cell
@@ -518,12 +519,12 @@ func build(team: Dictionary, number: int, player: bool, driver: Dictionary = {})
 		ext = EXT_MODELS[vk]
 		add_child(_ext_model(ext, team, number, player))
 		for lb in ext.get("labels", []):
-			var c0: Vector3 = lb[1]
-			var n0: Vector3 = lb[2]
-			var sides := [1.0] if absf(n0.x) < 0.5 else [-1.0, 1.0]
+			var lc: Vector3 = lb[1]
+			var ln: Vector3 = lb[2]
+			var sides := [1.0] if absf(ln.x) < 0.5 else [-1.0, 1.0]
 			for sd in sides:
-				var cc := Vector3(c0.x * sd, c0.y, c0.z)
-				var nn := Vector3(n0.x * sd, n0.y, n0.z)
+				var cc := Vector3(lc.x * sd, lc.y, lc.z)
+				var nn := Vector3(ln.x * sd, ln.y, ln.z)
 				var half := Vector3(absf(nn.x) * 0.01 + absf(nn.z) * float(lb[3]) + absf(nn.y) * 0.2, absf(nn.y) * 0.01 + (1.0 - absf(nn.y)) * float(lb[4]), absf(nn.x) * float(lb[3]) + absf(nn.y) * float(lb[3]))
 				_ext_sponsor(AABB(cc - half * 0.5, half), String(lb[0]), team, number)
 		_wheel_z = float(ext["wheel_z"])
@@ -629,8 +630,9 @@ func _ext_model(cfg: Dictionary, team: Dictionary = {}, number := 0, player := f
 
 ## Patrocinador fictício no lugar de uma marca real: texto plano encostado na superfície da peça de
 ## decalque original (caixa no espaço do carro: o eixo mais fino é a normal da superfície).
-func _ext_sponsor(box: AABB, slot: String, team: Dictionary, number: int) -> void:
+func _ext_sponsor(bx: AABB, slot: String, team: Dictionary, number: int) -> void:
 	var h := absi(hash(String(team["name"])))
+	@warning_ignore("integer_division")
 	var names := {
 		"title": String(team.get("title", SPONSORS[h % SPONSORS.size()])),
 		"second": SPONSORS[(h / 7 + 3) % SPONSORS.size()],
@@ -640,8 +642,8 @@ func _ext_sponsor(box: AABB, slot: String, team: Dictionary, number: int) -> voi
 		"number": str(number),
 	}
 	var text: String = names[slot]
-	var sz := box.size
-	var c := box.get_center()
+	var sz := bx.size
+	var c := bx.get_center()
 	var axis := 0
 	if sz.y <= sz.x and sz.y <= sz.z:
 		axis = 1
@@ -851,8 +853,8 @@ static func _build_body(vk := "2026") -> ArrayMesh:
 			var pb := G(b[0], 0.11, s * b[1] * 0.985)
 			var mid := (pa + pb) * 0.5
 			var dir := (pb - pa)
-			var basis := Basis(Vector3.UP, atan2(-dir.x, -dir.z))
-			box(carb, mid, Vector3(0.012, 0.06, dir.length()), basis)
+			var bas := Basis(Vector3.UP, atan2(-dir.x, -dir.z))
+			box(carb, mid, Vector3(0.012, 0.06, dir.length()), bas)
 		for k in 4:
 			var z := 0.18 + k * 0.09
 			prism(carb, [[1.34, 0.09], [1.34, 0.17 - k * 0.01], [1.05, 0.22], [0.72, 0.18], [0.72, 0.09]], G(0, 0, s * z), Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0), 0.008)
@@ -1288,7 +1290,7 @@ func _build_cockpit(team: Dictionary, player: bool, driver: Dictionary = {}) -> 
 
 ## Material com textura real (CC0) aplicada por projeção triplanar no espaço do objeto.
 ## key: glove / suede / suit  (assets/textures/<key>_detail.jpg e _normal.jpg)
-static func _tex_mat(key: String, col: Color, rough: float, scale: float, nd: float) -> StandardMaterial3D:
+static func _tex_mat(key: String, col: Color, rough: float, tex_scale: float, nd: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = col
 	m.albedo_texture = load("res://assets/textures/%s_detail.jpg" % key)
@@ -1297,7 +1299,7 @@ static func _tex_mat(key: String, col: Color, rough: float, scale: float, nd: fl
 	m.normal_scale = nd
 	m.uv1_triplanar = true
 	m.uv1_triplanar_sharpness = 2.0
-	m.uv1_scale = Vector3(scale, scale, scale)
+	m.uv1_scale = Vector3(tex_scale, tex_scale, tex_scale)
 	m.roughness = rough
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
@@ -1638,7 +1640,9 @@ func _sponsor_label(text: String, size: int, col: Color, pos: Vector3, rot: Vect
 func _build_sponsors(team: Dictionary) -> void:
 	var h := absi(hash(String(team["name"])))
 	var title: String = team.get("title", SPONSORS[h % SPONSORS.size()])
+	@warning_ignore("integer_division")
 	var second: String = SPONSORS[(h / 7 + 3) % SPONSORS.size()]
+	@warning_ignore("integer_division")
 	var third: String = SPONSORS[(h / 13 + 7) % SPONSORS.size()]
 	if second == title:
 		second = SPONSORS[(h + 1) % SPONSORS.size()]
@@ -1668,13 +1672,13 @@ func _build_sponsors(team: Dictionary) -> void:
 static var _decal_tex := {}
 
 
-func _decal(tex: String, pos: Vector3, size: Vector3, basis: Basis) -> void:
+func _decal(tex: String, pos: Vector3, size: Vector3, bas: Basis) -> void:
 	if not _decal_tex.has(tex):
 		_decal_tex[tex] = load("res://assets/decals/%s.png" % tex)
 	var d := Decal.new()
 	d.texture_albedo = _decal_tex[tex]
 	d.size = size
-	d.transform = Transform3D(basis, pos)
+	d.transform = Transform3D(bas, pos)
 	d.normal_fade = 0.4
 	d.upper_fade = 0.05
 	d.lower_fade = 0.05
@@ -1760,6 +1764,7 @@ func set_brake_light(_on: bool) -> void:
 func set_rain_light(on: bool) -> void:
 	_rain_on = on
 	if _rain_mat:
+		@warning_ignore("integer_division")
 		var blink := on and (Time.get_ticks_msec() / 250) % 2 == 0
 		_rain_mat.emission_energy_multiplier = 8.0 if blink else 0.0
 

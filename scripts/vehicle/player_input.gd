@@ -70,10 +70,10 @@ func drive(car: Car, dt: float) -> void:
 	# freio automático (segue o perfil da linha ideal) — assistência opcional
 	car.auto_braking = false
 	if bool(st.get("auto_brake", false)) and car.v_long > 5.0:
-		var tr := car.track
-		var ahead := tr.idx(car.t_idx + int(maxf(car.speed * 0.2, 2.0) / tr.ds) + 1)
+		var trk := car.track
+		var ahead := trk.idx(car.t_idx + int(maxf(car.speed * 0.2, 2.0) / trk.ds) + 1)
 		var wet_k := lerpf(1.0, 0.75, car.wetness) if Tyres.get_data(car.compound)["slick"] else 0.85
-		var target := tr.speed_prof[ahead] * 0.96 * wet_k
+		var target := trk.speed_prof[ahead] * 0.96 * wet_k
 		if car.speed > target + 0.5:
 			var ab := clampf((car.speed - target) * 0.3, 0.0, 1.0)
 			if ab > _brk:

@@ -13,9 +13,9 @@ var lost := 0.0
 class Ctl:
 	var lab
 	func drive(c: Car, _dt: float) -> void:
-		var tr := c.track
+		var trk := c.track
 		var look := 6.0 + c.speed * 0.3
-		var target := tr.point(tr.idx(c.t_idx + int(look / tr.ds)), 0.0)
+		var target := trk.point(trk.idx(c.t_idx + int(look / trk.ds)), 0.0)
 		var b := c.global_transform.basis
 		var to := target - c.global_position
 		var xr := to.dot(b.x)

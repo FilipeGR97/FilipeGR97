@@ -448,6 +448,21 @@ func _physics_process(dt: float) -> void:
 		_update_flags(0.1)
 		if OS.get_cmdline_user_args().has("pitqueue"):
 			_dev_pit_queue()
+		if OS.get_cmdline_user_args().has("startlog") and is_racing() and race_time() < 16.0:
+			# ferramenta de teste: quantos carros andam lado a lado na largada (fila indiana = 1 coluna)
+			if int(race_time() * 10.0) % 20 == 0:
+				var cols := {}
+				var lats := []
+				for c in cars:
+					cols[int(roundf((c as Car).lateral / 2.5))] = true
+					lats.append(snappedf((c as Car).lateral, 0.1))
+				print("[largada] t=%.0f s colunas=%d lateral=%s" % [race_time(), cols.size(), str(lats)])
+		if OS.get_cmdline_user_args().has("pitall"):
+			# ferramenta de teste: todos os carros param no box na 1ª volta (testa entrada/saída do pit lane)
+			for c in cars:
+				var pc: Car = c
+				if race_time() > 20.0 and pc.pit_stops == 0 and pc.pit_state == Car.Pit.NONE:
+					pc.request_pit(true)
 		if OS.get_cmdline_user_args().has("vsctest"):
 			_dev_vsc_test()
 		_compute_standings()
@@ -531,7 +546,7 @@ func _update_timing(car: Car, dt: float) -> void:
 	t.prev_s = s
 
 
-func _close_sector(car: Car, t: Timing, idx: int) -> void:
+func _close_sector(_car: Car, t: Timing, idx: int) -> void:
 	var st := session_time - t.sector_start
 	t.sector_start = session_time
 	t.cur_sectors[idx] = st
@@ -910,7 +925,7 @@ func _show_results() -> void:
 			tm = "+%.3f" % (t.finish_time - leader.finish_time)
 		else:
 			tm = "em pista"
-		rows.append({"player": car == player, "cols": ["DSQ" if _dsq(car) else i + 1, car.driver["name"], car.team["name"], tm, Game.fmt_time(t.best_lap) if t.best_lap > 0 else "--", car.pit_stops, ("+%ds" % int(t.penalty)) if t.penalty > 0.0 else ""]})
+		rows.append({"player": car == player, "cols": ["DSQ" if _dsq(car) else str(i + 1), car.driver["name"], car.team["name"], tm, Game.fmt_time(t.best_lap) if t.best_lap > 0 else "--", car.pit_stops, ("+%ds" % int(t.penalty)) if t.penalty > 0.0 else ""]})
 	var warn := ""
 	if _dsq(player):
 		warn = "  — você foi desclassificado (não usou 2 compostos secos)"

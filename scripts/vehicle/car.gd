@@ -125,7 +125,6 @@ var last_impact := 0.0           # severidade do último impacto (0..1+), lida p
 var impact_t := 0.0
 var blue_flag := false
 var aero_allowed := true          # direção de prova (VSC desativa)
-var _raw_prev_vel := Vector3.ZERO
 var wrong_way := false
 var auto_braking := false
 ## categoria (definida pela corrida antes de criar os carros) e física correspondente
@@ -364,7 +363,33 @@ func reset_to_track() -> void:
 	# fica do lado oposto ao traçado ideal (fora do caminho de quem vem)
 	var line := track.line_off[i]
 	var lat := -signf(line if absf(line) > 0.5 else lateral) * (track.half_width - 2.0)
-	place(track.frame(i, lat, 0.0))
+	# Patch 7.2: procura uma vaga livre. Antes, vários carros presos no mesmo trecho eram recolocados
+	# um dentro do outro (mesma lateral, poucos metros de distância) e travavam de novo, em ciclo.
+	var best := track.frame(i, lat, 0.0)
+	if is_inside_tree():
+		var space := get_world_3d().direct_space_state
+		var box := BoxShape3D.new()
+		box.size = Vector3(2.3, 1.0, 6.2)
+		var q := PhysicsShapeQueryParameters3D.new()
+		q.shape = box
+		q.exclude = [get_rid()]
+		var found := false
+		for back in [0.0, -9.0, -18.0, 9.0, -27.0, -36.0]:
+			for lt in [lat, -lat * 0.15, -lat]:
+				var f := track.frame(track.idx(i + int(back / track.ds)), lt, 0.0)
+				q.transform = Transform3D(f.basis, f.origin + f.basis.y * 0.7)
+				var busy := false
+				for h in space.intersect_shape(q, 8):
+					if h["collider"] is Car:
+						busy = true
+						break
+				if not busy:
+					best = f
+					found = true
+					break
+			if found:
+				break
+	place(best)
 	gear = 1
 	for w in wheels:
 		var wh: Wheel = w
@@ -534,7 +559,6 @@ func _physics_process(dt: float) -> void:
 	var rear_slip := maxf(wheels[2].sx, wheels[3].sx)
 	if gear < 0:
 		rear_slip = -minf(wheels[2].sx, wheels[3].sx)
-	var low_grip: bool = wheels[2].surface >= Track.Surface.GRASS or wheels[3].surface >= Track.Surface.GRASS
 	var max_cut := 0.95
 	# controle de tração proporcional e suave (antes era liga/desliga e "picotava" o motor)
 	var tc_want := clampf((rear_slip - tc_target) / maxf(tc_target, 0.05) * 0.85, 0.0, max_cut)
@@ -842,7 +866,7 @@ func _on_crash(dv: Vector3) -> void:
 	var fwd := -global_transform.basis.z
 	var mag := dv.length()
 	if OS.get_cmdline_user_args().has("impactlog"):
-		print("[impacto] %s Δv=%.1f m/s frontal=%.2f bico=%s lateral=%s v0=%.0f km/h" % [driver.get("code", "?"), mag, -dv.normalized().dot(fwd), _crash_front, _crash_side, _crash_v0 * 3.6])
+		print("[impacto] t=%.1f s=%.0f %s Δv=%.1f m/s frontal=%.2f bico=%s lateral=%s v0=%.0f km/h" % [Engine.get_physics_frames() / 120.0, s, driver.get("code", "?"), mag, -dv.normalized().dot(fwd), _crash_front, _crash_side, _crash_v0 * 3.6])
 	if mag < 4.0:
 		return
 	var sev := clampf((mag - 4.0) / 14.0, 0.0, 1.5)

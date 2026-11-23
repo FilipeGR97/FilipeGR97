@@ -76,7 +76,6 @@ func _physics_process(dt: float) -> void:
 		print("RESUMO VOLTA: deriva máx %.1f°, ticks rodando %d" % [max_slip, spins])
 		get_tree().quit()
 		return
-	var yaw := absf(car.angular_velocity.y)
 	var slip := 0.0
 	if car.speed > 10.0:
 		slip = absf(rad_to_deg(atan2(car.linear_velocity.dot(car.global_transform.basis.x), car.v_long)))

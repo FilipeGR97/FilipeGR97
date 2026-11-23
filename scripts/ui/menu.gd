@@ -151,6 +151,8 @@ func _build_stage() -> void:
 	add_child(_car_holder)
 	_cam = Camera3D.new()
 	_cam.fov = 38.0
+	# a câmera do menu anda no _process (girando em volta do carro): sem interpolação de física
+	_cam.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(_cam)
 	_set_car(_team)
 

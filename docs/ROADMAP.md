@@ -22,7 +22,7 @@ Ordem pensada para ter sempre algo jogável, priorizando o que mais aproxima de 
 
 ## Patch 6 — carros e pinturas (✅ entregue: pinturas realistas por equipe, acabamento fosco/brilhante/metálico, adesivos de detalhe, rodas com aro/calota/porca)
 
-## Patch 7 — modelos 3D reais (✅ entregue: carro 2026 com modelo CC-BY repintado; próximos: MP4/5 para a Lenda, capacete CC-BY, luvas)
+## Patch 7 — modelos 3D reais (✅ entregue: carro 2026 com modelo CC-BY repintado; 7.1: MP4/5 na Lenda, capacete e luvas CC-BY; 7.2: checkup geral, código sem nenhum aviso do Godot)
 
 ## Patch 8 — fim de semana completo
 - Treinos livres 1–3, Classificação Q1/Q2/Q3 (eliminação), Sprint, Corrida.

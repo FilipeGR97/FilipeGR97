@@ -25,6 +25,9 @@ var fails: Array = []
 var prev_s := 0.0
 var progress := 0.0
 var saved_settings := {}
+var touches := 0
+var _touching := false
+var min_gap := 999.0
 
 const SCENARIOS := [
 	{"name": "muro_frontal_200", "s": 300.0, "lat": 5.5, "yaw": -40.0, "v": 200.0},
@@ -41,6 +44,10 @@ const SCENARIOS := [
 	{"name": "cambio_manual_re", "s": 200.0, "lat": 0.0, "yaw": 0.0, "v": 0.0, "manual": true, "time": 25.0},
 	{"name": "batida_traseira_ia", "s": 200.0, "lat": 0.0, "yaw": 0.0, "v": 120.0, "rear_hit": true},
 	{"name": "box_do_jogador", "s": 4350.0, "lat": 0.0, "yaw": 0.0, "v": 200.0, "pit": true, "time": 50.0},
+	# Patch 7.2: IA mais rápida atrás. Fechando a porta ela tem que frear e ficar na cola (sem bater);
+	# com a porta aberta ela tem que ultrapassar.
+	{"name": "porta_fechada", "s": 4640.0, "lat": 0.0, "yaw": 0.0, "v": 210.0, "duel": true, "block": true, "vmax": 225.0, "time": 13.0},
+	{"name": "porta_aberta", "s": 4640.0, "lat": 0.0, "yaw": 0.0, "v": 210.0, "duel": true, "vmax": 225.0, "time": 13.0},
 ]
 
 
@@ -130,6 +137,22 @@ func _next() -> void:
 			(w as Car.Wheel).omega = 230.0 / 3.6 / 0.36
 		other.gear = 7
 		other.set_meta("ramming", true)
+	touches = 0
+	_touching = false
+	min_gap = 999.0
+	if cur.get("duel", false):
+		other = Car.new()
+		add_child(other)
+		other.setup(1, Teams.team(1)["drivers"][0], track, false)
+		var ai2 := AIDriver.new(1.0)
+		ai2.cars = [car, other]
+		other.controller = ai2
+		var fo2 := track.frame(track.idx(i - int(28.0 / track.ds)), 0.0, 0.0)
+		other.place(fo2)
+		other.linear_velocity = -fo2.basis.z * 250.0 / 3.6
+		for w in other.wheels:
+			(w as Car.Wheel).omega = 250.0 / 3.6 / 0.36
+		other.gear = 6
 	prev_s = car.s
 	progress = 0.0
 
@@ -191,6 +214,16 @@ func _physics_process(dt: float) -> void:
 	prev_s = car.s
 	if recovered_at >= 0.0:
 		progress += ds
+	# ---------------- duelo: toques entre os carros (caixas de ~5,4 x 1,9 m se sobrepondo)
+	if other and cur.get("duel", false):
+		var dsd := wrapf(other.s - car.s, -track.length * 0.5, track.length * 0.5)
+		var dl := absf(other.lateral - car.lateral)
+		if dsd < 0.0:
+			min_gap = minf(min_gap, -dsd)
+		var touch := absf(dsd) < 5.2 and dl < 1.95
+		if touch and not _touching:
+			touches += 1
+		_touching = touch
 	# ---------------- piloto de teclado com rotina de recuperação
 	_drive(dt)
 	if "trace" in OS.get_cmdline_user_args() and int(t * 120) % 30 == 0:
@@ -235,6 +268,13 @@ func _drive(dt: float) -> void:
 		Input.action_release("pit_request")
 	var look := track.idx(car.t_idx + int((8.0 + car.speed * 0.4) / track.ds))
 	var lat_target := track.line_off[look]
+	if cur.get("duel", false):
+		# o jogador fecha a porta: vai para o lado em que a IA tenta sair (um movimento, sem ziguezague)
+		lat_target = 0.0
+		if cur.get("block", false) and other:
+			var behind := wrapf(car.s - other.s, -track.length * 0.5, track.length * 0.5)
+			if behind > 3.0 and behind < 40.0 and absf(other.lateral - car.lateral) > 0.8:
+				lat_target = clampf(other.lateral, -track.half_width + 1.5, track.half_width - 1.5)
 	if cur.get("kerb", false):
 		lat_target = (track.half_width + 0.6) * (1.0 if track.curv[look] < 0.0 else -1.0)
 	var target := track.point(look, lat_target)
@@ -261,6 +301,8 @@ func _drive(dt: float) -> void:
 	var prof := track.speed_prof[track.idx(car.t_idx + int(maxf(car.speed * 0.9, 25.0) / track.ds))] * 3.6 * 0.95
 	if car.wetness > 0.3:
 		prof *= 0.6
+	if cur.has("vmax"):
+		prof = minf(prof, float(cur["vmax"]))
 	var brake := spd > prof + 8.0
 	_press("brake", brake)
 	_press("throttle", not brake)
@@ -299,7 +341,7 @@ func _drive_manual(_dt: float) -> void:
 
 
 func _finish() -> void:
-	var name: String = cur["name"]
+	var sc_name: String = cur["name"]
 	var dur := float(cur.get("time", 30.0))
 	if not cur.get("manual", false):
 		if recovered_at < 0.0:
@@ -310,13 +352,22 @@ func _finish() -> void:
 			_fail("rodando depois de recuperar (%d ticks com deriva > 30°)" % spins)
 	if max_temp > 139.0:
 		_fail("pneu superaquecido (%.0f °C)" % max_temp)
+	if cur.get("duel", false) and other:
+		var passed := wrapf(other.s - car.s, -track.length * 0.5, track.length * 0.5) > 0.0
+		print("   duelo: toques=%d  menor distância atrás=%.1f m  IA passou=%s  dano IA=%d%%" % [touches, min_gap, str(passed), int(other.dmg_wing * 100)])
+		if touches > 0 or other.dmg_wing > 0.05:
+			_fail("IA encostou no jogador (%d toques)" % touches)
+		if cur.get("block", false) and min_gap > 30.0:
+			_fail("IA não ficou na cola (menor distância %.0f m)" % min_gap)
+		if not cur.get("block", false) and not passed:
+			_fail("IA não ultrapassou com a porta aberta")
 	if cur.get("pit", false) and car.pit_stops < 1:
 		_fail("pit stop do jogador não aconteceu (estado %d)" % car.pit_state)
 	var ok := fails.is_empty()
 	if cur.get("noassist", false) and spins > 20:
 		print("   (sem assistências o carro roda %d ticks no teclado — esperado, como num F1 real)" % spins)
 	var dmg_txt := " asa=%d%% furo=%s" % [int(car.dmg_wing * 100), str(car.puncture >= 0)]
-	var line := "%-20s %s  recuperou=%s  avançou=%4.0fm  rodadas=%d  pneu_máx=%3.0f°C  pits=%d" % [name, "OK  " if ok else "FALHA", ("%.1fs" % recovered_at) if recovered_at >= 0.0 else "não", progress, spins, max_temp, car.pit_stops]
+	var line := "%-20s %s  recuperou=%s  avançou=%4.0fm  rodadas=%d  pneu_máx=%3.0f°C  pits=%d" % [sc_name, "OK  " if ok else "FALHA", ("%.1fs" % recovered_at) if recovered_at >= 0.0 else "não", progress, spins, max_temp, car.pit_stops]
 	if not ok:
 		line += "\n      -> " + "; ".join(fails)
 	print(line + dmg_txt)
