@@ -26,7 +26,9 @@ const EXT_MODELS := {
 	"2026": {"path": "res://assets/cars_src/sf90/SF90.fbx", "scale": 1.16, "pivot": Vector3(0.0, 0.0917, -0.185), "flip": true,
 		"hide": ["Rim ", "Tire ", "Decal", "Decail", "Steering Wheel", "Buttons", "Grip Button", "Ferrari Button", "Gears", "Its for something"],
 		"wheel_z": 1.8, "cockpit": Vector3(0.0, -0.13, -0.365), "nosecam": Vector3(0.0, 0.74, -1.45), "mirror": Vector3(0.47, 0.7, -0.62),
-		"paint": {"Main": ["res://assets/cars_src/sf90/textures/SF90_Main_", Color(0.808, 0.043, 0.055)]},
+		"paint": {"Main": {"base": "res://assets/cars_src/sf90/textures/SF90_Main_BaseColor.png", "normal": "res://assets/cars_src/sf90/textures/SF90_Main_Normal.png",
+			"rough": "res://assets/cars_src/sf90/textures/SF90_Main_Roughness.png", "metal": "res://assets/cars_src/sf90/textures/SF90_Main_Metallic.png",
+			"ref": Color(0.808, 0.043, 0.055)}},
 		# onde ficavam as marcas reais (peças de decalque do modelo) -> nossos patrocinadores fictícios
 		"slots": {"Decal Shell Left": "title", "Decal Shell Right": "title", "Decal Ray Ban Left": "second", "Decal Ray Ban Right": "second",
 			"Decal UPS Left": "third", "Decal UPS Right": "third", "Decal Hublot Left": "fourth", "Decal Hublot Right": "fourth",
@@ -35,6 +37,15 @@ const EXT_MODELS := {
 			"Decal Kaspersky Front Right": "second", "Decal Shell V-Power Front Left": "third", "Decal Shell V-Power Front Right": "third",
 			"Decal Number 5 Front": "number", "Decal Number 5 Left": "number", "Decal Number 5 Right": "number",
 			"Decal Weichai": "fourth", "Decal Lenovo Left": "tyre", "Decal Lenovo Right": "tyre"}},
+	# McLaren MP4/5 1989 (heynic/VeCarz, CC BY 4.0), convertido de .usdz por tools/usd_to_glb.py
+	"lenda": {"path": "res://assets/cars_src/mp45/mp45.glb", "scale": 0.603, "pivot": Vector3(0.0, -0.062, -0.345), "flip": true,
+		"hide": ["front_wheels", "back_wheels", "steering_wheel"],
+		"wheel_z": 1.45, "wheel_x": [0.89, 0.85], "cockpit": Vector3(0.0, -0.187, -0.224), "nosecam": Vector3(0.0, 0.6, -1.25), "mirror": Vector3(0.5, 0.66, -0.4),
+		"paint": {"body_mat": {"base": "res://assets/cars_src/mp45/textures/body_mat_baseColor_scale1.jpg", "mask": "res://assets/cars_src/mp45/textures/body_paintmask.png"}},
+		# patrocinadores posicionados à mão (o modelo não tem peças de logo): [tipo, centro (lado direito), normal, largura, alt]
+		"labels": [["title", Vector3(0.6, 0.43, 0.45), Vector3(1, 0, 0), 0.62, 0.14], ["title", Vector3(0.5, 0.9, 1.95), Vector3(1, 0, 0), 0.36, 0.12],
+			["second", Vector3(0.3, 0.7, 0.95), Vector3(1, 0, 0), 0.4, 0.08], ["number", Vector3(0.0, 0.46, -1.55), Vector3(0, 1, 0), 0.16, 0.14],
+			["third", Vector3(0.0, 0.44, -1.15), Vector3(0, 1, 0), 0.3, 0.07]]},
 }
 static var _mats: Dictionary = {}
 
@@ -48,6 +59,7 @@ var cam_off := Vector3.ZERO        # deslocamento das câmeras de cockpit (model
 var nose_cam := NOSECAM
 var mirror_pos := Vector3(0.53, 0.735, -0.676)   # espelho direito (o esquerdo é o simétrico)
 var _wheel_z := 1.7
+var _wheel_x := [0.8, 0.78]
 var _tyres: Array = []          # MeshInstance3D dos pneus (cor do composto por instância)
 var _compound_col := Color(1.0, 0.82, 0.05)
 var _brake_mat: StandardMaterial3D
@@ -505,7 +517,17 @@ func build(team: Dictionary, number: int, player: bool, driver: Dictionary = {})
 		variant = vk
 		ext = EXT_MODELS[vk]
 		add_child(_ext_model(ext, team, number, player))
+		for lb in ext.get("labels", []):
+			var c0: Vector3 = lb[1]
+			var n0: Vector3 = lb[2]
+			var sides := [1.0] if absf(n0.x) < 0.5 else [-1.0, 1.0]
+			for sd in sides:
+				var cc := Vector3(c0.x * sd, c0.y, c0.z)
+				var nn := Vector3(n0.x * sd, n0.y, n0.z)
+				var half := Vector3(absf(nn.x) * 0.01 + absf(nn.z) * float(lb[3]) + absf(nn.y) * 0.2, absf(nn.y) * 0.01 + (1.0 - absf(nn.y)) * float(lb[4]), absf(nn.x) * float(lb[3]) + absf(nn.y) * float(lb[3]))
+				_ext_sponsor(AABB(cc - half * 0.5, half), String(lb[0]), team, number)
 		_wheel_z = float(ext["wheel_z"])
+		_wheel_x = ext.get("wheel_x", _wheel_x)
 		cam_off = ext["cockpit"]
 		nose_cam = ext.get("nosecam", NOSECAM)
 		mirror_pos = ext.get("mirror", mirror_pos)
@@ -584,12 +606,16 @@ func _ext_model(cfg: Dictionary, team: Dictionary = {}, number := 0, player := f
 			if not _cache.has(key):
 				var sm := ShaderMaterial.new()
 				sm.shader = load("res://shaders/ext_paint.gdshader")
-				var pre2: String = paint[mname][0]
-				sm.set_shader_parameter("base_tex", load(pre2 + "BaseColor.png"))
-				sm.set_shader_parameter("normal_tex", load(pre2 + "Normal.png"))
-				sm.set_shader_parameter("rough_tex", load(pre2 + "Roughness.png"))
-				sm.set_shader_parameter("metal_tex", load(pre2 + "Metallic.png"))
-				sm.set_shader_parameter("paint_ref", paint[mname][1])
+				var pc: Dictionary = paint[mname]
+				sm.set_shader_parameter("base_tex", load(pc["base"]))
+				for k in ["normal", "rough", "metal"]:
+					sm.set_shader_parameter("has_" + k, 1.0 if pc.has(k) else 0.0)
+					if pc.has(k):
+						sm.set_shader_parameter(k + "_tex", load(pc[k]))
+				if pc.has("mask"):
+					sm.set_shader_parameter("mask_tex", load(pc["mask"]))
+					sm.set_shader_parameter("use_mask", 1.0)
+				sm.set_shader_parameter("paint_ref", pc.get("ref", Color(0.8, 0.05, 0.05)))
 				sm.set_shader_parameter("to_car", Projection(to_car))
 				_cache[key] = sm
 			mi.set_surface_override_material(si, _cache[key])
@@ -1065,9 +1091,7 @@ func _build_wheels() -> void:
 			m.surface_set_material(0, tm)
 			_cache[key] = m
 		var root := Node3D.new()
-		var sx := -0.8 if left else 0.8
-		if not front:
-			sx = -0.78 if left else 0.78
+		var sx: float = (-1.0 if left else 1.0) * float(_wheel_x[0] if front else _wheel_x[1])
 		root.position = Vector3(sx, R, -_wheel_z if front else _wheel_z)
 		add_child(root)
 		var steer := Node3D.new()
@@ -1281,6 +1305,46 @@ static func _tex_mat(key: String, col: Color, rough: float, scale: float, nd: fl
 
 ## Capacete: casco liso em seções (pintura gráfica por shader com contorno e verniz), viseira escura,
 ## borracha da viseira, spoiler, entrada de ar e HANS. helmet = [cor base, grafismo, contorno].
+## Capacete do modelo "Helmet" de Fabianmml (CC BY 4.0): casco com o desenho do nosso piloto (shader) e o
+## desgaste do original, viseira espelhada do original, peças escuras (sem os letreiros reais).
+const HELMET_OBJ := "res://assets/cars_src/helmet/helmet.obj"
+const HELMET_SHELL := [3]
+const HELMET_VISOR := [1, 5, 7]
+
+
+func _build_helmet_model(paint: ShaderMaterial, player: bool) -> void:
+	var mesh: Mesh = load(HELMET_OBJ)
+	var k := 0.0705
+	paint.set_shader_parameter("center", Vector3(0.0, 0.15, 0.25))
+	paint.set_shader_parameter("radii", Vector3(1.82, 1.95, 2.4))
+	paint.set_shader_parameter("rough_tex", load("res://assets/cars_src/helmet/helmet_rough.png"))
+	paint.set_shader_parameter("use_rough", 1.0)
+	if not _mats.has("helmet_visor"):
+		var vm := StandardMaterial3D.new()
+		vm.albedo_texture = load("res://assets/cars_src/helmet/visor_base.png")
+		vm.metallic = 0.85
+		vm.roughness = 0.06
+		vm.normal_enabled = true
+		vm.normal_texture = load("res://assets/cars_src/helmet/visor_normal.png")
+		_mats["helmet_visor"] = vm
+		var pm := StandardMaterial3D.new()
+		pm.albedo_color = Color(0.045, 0.045, 0.05)
+		pm.roughness = 0.45
+		pm.metallic = 0.3
+		pm.normal_enabled = true
+		pm.normal_texture = load("res://assets/cars_src/helmet/props_normal.png")
+		_mats["helmet_props"] = pm
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	for si in mesh.get_surface_count():
+		var m: Material = paint if si in HELMET_SHELL else (_mats["helmet_visor"] if si in HELMET_VISOR else _mats["helmet_props"])
+		mi.set_surface_override_material(si, m)
+	mi.transform = Transform3D(Basis().scaled(Vector3(k, k, k)), Vector3(0.0, 0.818, -0.10) - Vector3(0.0, 0.09, 0.22) * k)
+	add_child(mi)
+	if player:
+		mi.layers = HIDE_LAYER
+
+
 func _build_helmet(colors: Array, player: bool, driver: Dictionary = {}) -> void:
 	var c1: Color = colors[0]
 	var c2: Color = colors[1] if colors.size() > 1 else c1.darkened(0.3)
@@ -1321,6 +1385,16 @@ func _build_helmet(colors: Array, player: bool, driver: Dictionary = {}) -> void
 		# setas (como no vídeo de referência) são as mais comuns; depois faixa central e diagonais
 		design = [0, 0, 0, 2, 2, 3, 3][(code.unicode_at(0) * 7 + code.unicode_at(code.length() - 1)) % 7]
 	paint.set_shader_parameter("design", float(design))
+	if ResourceLoader.exists(HELMET_OBJ) and not OS.get_cmdline_user_args().has("procedural"):
+		_build_helmet_model(paint, player)
+		# HANS (carbono) continua o nosso
+		var hm := ArrayMesh.new()
+		hm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, hans.to_arrays())
+		hm.surface_set_material(0, mat("carbon"))
+		var hmi := MeshInstance3D.new()
+		hmi.mesh = hm
+		add_child(hmi)
+		return
 	var dark_m := StandardMaterial3D.new()
 	dark_m.albedo_color = Color(0.03, 0.03, 0.035)
 	dark_m.roughness = 0.55
@@ -1370,84 +1444,89 @@ func _helmet_ring(acc: Acc, y0: float, y1: float, grow: float, a0: float, a1: fl
 ## Luvas de couro claro acolchoadas, fechadas em volta das manoplas: dedos grossos encostados
 ## (punho fechado), dorso arredondado com costura, polegar por cima, palma de camurça e punho
 ## longo com tira de velcro na cor da equipe. Braços com tecido do macacão e cinemática inversa.
+const GLOVE_GLB := "res://assets/cars_src/glove/glove_grip.glb"
+
+
 func _build_hands(team: Dictionary) -> void:
-	var glove := _tex_mat("glove", Color(0.92, 0.92, 0.93).lerp(team["primary"], 0.08), 0.62, 34.0, 1.0)
-	var palm := _tex_mat("suede", Color(0.36, 0.36, 0.37), 0.95, 40.0, 0.8)
-	var strap := _tex_mat("suit", (team["accent"] as Color).lerp(team["primary"], 0.5), 0.7, 30.0, 0.6)
 	var suit := _tex_mat("suit", (team["primary"] as Color).darkened(0.25), 0.9, 22.0, 0.8)
+	suit.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var classic := variant == "v10" or variant == "lenda"
 	var wide := 0.112 if not classic else 0.104
 	_wrist_local.clear()
-	for s in [-1.0, 1.0]:
-		# centro da manopla (meio da altura dela)
-		var C := Vector3(s * (wide + 0.022), -0.006, 0.004)
-		var gl := Acc.new()
-		var pa := Acc.new()
-		var st := Acc.new()
-		# dedos: quatro anéis grossos encostados envolvendo a manopla pela frente
-		var R := 0.037
-		for fi in 4:
-			var fy: float = [0.033, 0.011, -0.011, -0.032][fi]
-			var reach: float = [290.0, 298.0, 296.0, 282.0][fi]
-			var fr: float = [0.0118, 0.0124, 0.0121, 0.0108][fi]
-			var pts := []
-			var steps := 12
-			for k in steps + 1:
-				var phi := deg_to_rad(lerpf(70.0, reach, float(k) / steps))
-				var rr := R - (0.005 if k == steps else 0.0)
-				pts.append(C + Vector3(s * sin(phi) * rr, fy, cos(phi) * rr))
-			tube(gl, pts, fr, 12)
-		# dorso da mão: volume arredondado do pulso até os nós dos dedos (por fora da manopla)
-		var W := C + Vector3(s * 0.022, -0.018, 0.084)
-		var K := C + Vector3(s * 0.034, 0.0, 0.022)
-		tube(gl, [W, W.lerp(K, 0.35) + Vector3(s * 0.008, 0.002, 0.0), W.lerp(K, 0.75) + Vector3(s * 0.009, 0.001, 0.0), K], 0.043, 18, Vector2(0.52, 1.05))
-		# costura/acolchoado sobre os nós dos dedos
-		tube(st, [K + Vector3(s * 0.022, 0.034, -0.004), K + Vector3(s * 0.026, 0.0, -0.002), K + Vector3(s * 0.022, -0.034, -0.004)], 0.006, 8)
-		# palma (lado de dentro, camurça)
-		tube(pa, [W + Vector3(-s * 0.014, 0.0, -0.004), K + Vector3(-s * 0.03, 0.0, -0.012)], 0.032, 14, Vector2(0.32, 1.0))
-		# polegar por cima da manopla, apontando para a frente
-		tube(gl, [C + Vector3(s * 0.032, 0.03, 0.046), C + Vector3(s * 0.016, 0.06, 0.024), C + Vector3(-s * 0.008, 0.062, 0.0), C + Vector3(-s * 0.018, 0.054, -0.016)], 0.0128, 12)
-		# punho longo da luva (gauntlet) e tira de velcro
-		cyl(gl, W, W + Vector3(-s * 0.006, -0.014, 0.055), 0.036, 20)
-		cyl(st, W + Vector3(-s * 0.002, -0.005, 0.02), W + Vector3(-s * 0.003, -0.007, 0.032), 0.0375, 20)
-		var m := ArrayMesh.new()
-		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, gl.to_arrays())
-		m.surface_set_material(0, glove)
-		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, pa.to_arrays())
-		m.surface_set_material(1, palm)
-		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, st.to_arrays())
-		m.surface_set_material(2, strap)
-		var hi := MeshInstance3D.new()
-		hi.mesh = m
-		_steer_node.add_child(hi)
-		_wrist_local.append(W + Vector3(-s * 0.006, -0.014, 0.055))
-	# braços (fora do volante, no espaço do modelo): macacão com textura de tecido
+	if ResourceLoader.exists(GLOVE_GLB) and not OS.get_cmdline_user_args().has("procedural"):
+		# luva de corrida de verdade (CC BY, layne.harris) com os dedos fechados na manopla (tools/glove_grip.py)
+		var gm := ShaderMaterial.new()
+		gm.shader = load("res://shaders/glove.gdshader")
+		gm.set_shader_parameter("tex", load("res://assets/cars_src/glove/glove_tex.jpg"))
+		gm.set_shader_parameter("glove_col", Color(0.93, 0.93, 0.94).lerp(team["primary"], 0.12))
+		if not _cache.has("glove_mesh"):
+			var gscene: PackedScene = load(GLOVE_GLB)
+			var ginst := gscene.instantiate()
+			for nd in _all_nodes(ginst):
+				if nd is MeshInstance3D:
+					_cache["glove_mesh"] = (nd as MeshInstance3D).mesh
+					break
+			ginst.free()
+		var gmesh: Mesh = _cache.get("glove_mesh")
+		for sd in [-1.0, 1.0]:
+			var C := Vector3(sd * (wide + 0.016), -0.006, 0.004)
+			var hb := Basis(Vector3(sd, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1))
+			var hi := MeshInstance3D.new()
+			hi.mesh = gmesh
+			hi.material_override = gm
+			hi.transform = Transform3D(hb, C)
+			_steer_node.add_child(hi)
+			_wrist_local.append(C + hb * Vector3(0.024, 0.006, 0.1))
+	else:
+		for sd in [-1.0, 1.0]:
+			_wrist_local.append(Vector3(sd * (wide + 0.06), -0.024, 0.14))
+	# braços: um tubo liso só (ombro -> cotovelo -> punho), refeito a cada quadro com o volante
 	_arms.clear()
-	for s in [-1.0, 1.0]:
-		var parts := []
-		for spec in [[0.05, 0.044], [0.045, 0.037], [0.047, 0.047]]:
-			var mi := MeshInstance3D.new()
-			if spec[0] == spec[1]:
-				var sp := SphereMesh.new()
-				sp.radius = spec[0]
-				sp.height = spec[0] * 2.0
-				sp.radial_segments = 20
-				sp.rings = 10
-				sp.material = suit
-				mi.mesh = sp
-			else:
-				var cm := CylinderMesh.new()
-				cm.bottom_radius = spec[0]
-				cm.top_radius = spec[1]
-				cm.height = 1.0
-				cm.radial_segments = 20
-				cm.rings = 1
-				cm.material = suit
-				mi.mesh = cm
-			add_child(mi)
-			parts.append(mi)
-		_arms.append(parts)
+	for sd in [-1.0, 1.0]:
+		var mi := MeshInstance3D.new()
+		mi.mesh = ImmediateMesh.new()
+		mi.material_override = suit
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		_arms.append([mi])
 	_update_arms()
+
+
+## Tubo liso ao longo de uma curva (ombro, cotovelo, punho), afinando como um braço de verdade.
+static func _arm_tube(im: ImmediateMesh, S: Vector3, E: Vector3, W: Vector3) -> void:
+	var rings := 14
+	var seg := 16
+	var pts := []
+	var rad := []
+	for i in rings + 1:
+		var t := float(i) / rings
+		# Bézier quadrática que passa pelo cotovelo
+		var ctrl := E * 2.0 - (S + W) * 0.5
+		var p := S * (1.0 - t) * (1.0 - t) + ctrl * 2.0 * t * (1.0 - t) + W * t * t
+		pts.append(p)
+		rad.append(lerpf(0.046, 0.03, t) * (1.0 + 0.08 * sin(t * PI * 2.0)))
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var frames := []
+	for i in rings + 1:
+		var tg: Vector3 = (pts[mini(i + 1, rings)] - pts[maxi(i - 1, 0)]).normalized()
+		var ref := Vector3.UP if absf(tg.y) < 0.9 else Vector3.RIGHT
+		var u := tg.cross(ref).normalized()
+		frames.append([u, tg.cross(u).normalized()])
+	for i in rings:
+		for j in seg:
+			var q := []
+			for di in [0, 1]:
+				for dj in [0, 1]:
+					var a := TAU * float(j + dj) / seg
+					var fr: Array = frames[i + di]
+					var nrm: Vector3 = (fr[0] as Vector3) * cos(a) + (fr[1] as Vector3) * sin(a)
+					q.append([pts[i + di] + nrm * float(rad[i + di]), nrm, Vector2(float(j + dj) / seg, float(i + di) / rings)])
+			for k in [0, 2, 1, 1, 2, 3]:
+				im.surface_set_normal(q[k][1])
+				im.surface_set_uv(q[k][2])
+				im.surface_add_vertex(q[k][0])
+	im.surface_end()
 
 
 static func _orient_limb(mi: Node3D, p0: Vector3, p1: Vector3) -> void:
@@ -1482,9 +1561,7 @@ func _update_arms() -> void:
 		E.x = s * minf(absf(E.x), 0.135)
 		E.y = minf(E.y, 0.6)
 		var parts: Array = _arms[k]
-		_orient_limb(parts[0], S, E)
-		_orient_limb(parts[1], E, Wr)
-		(parts[2] as Node3D).position = E
+		_arm_tube((parts[0] as MeshInstance3D).mesh, S, E, Wr)
 
 
 func _build_lights() -> void:

@@ -9,6 +9,8 @@ uniform vec3 c3 : source_color = vec3(0.05);    // contorno / detalhe
 uniform float design = 0.0;
 uniform vec3 center = vec3(0.0, 0.818, -0.10);
 uniform vec3 radii = vec3(0.128, 0.14, 0.155);
+uniform sampler2D rough_tex : hint_default_black, filter_linear_mipmap, repeat_enable;
+uniform float use_rough = 0.0;     // capacete do modelo CC-BY: desgaste/arranhões do original
 
 varying vec3 hp;
 
@@ -82,7 +84,7 @@ void fragment() {
 	// flocos metálicos finos sob o verniz
 	float fl = hash(floor(hp.xy * 900.0) + floor(hp.z * 900.0));
 	ALBEDO = col * (0.97 + 0.06 * fl);
-	ROUGHNESS = 0.22;
+	ROUGHNESS = use_rough > 0.5 ? 0.14 + 0.3 * texture(rough_tex, UV).r : 0.22;
 	METALLIC = 0.12 + 0.1 * step(0.93, fl);
 	CLEARCOAT = 1.0;
 	CLEARCOAT_ROUGHNESS = 0.03;

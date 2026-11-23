@@ -61,7 +61,7 @@ func _ready() -> void:
 	_info.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
 	_ui.add_child(_info)
 	# créditos exigidos pela licença CC BY 4.0 dos modelos 3D (lista completa em assets/CREDITOS.md)
-	var ver := UIKit.label("v" + str(ProjectSettings.get_setting("application/config/version")) + "   ·   Modelo 3D do carro 2026: heynic (VeCarz), CC BY 4.0", 14, UIKit.MUTED)
+	var ver := UIKit.label("v" + str(ProjectSettings.get_setting("application/config/version")) + "   ·   Modelos 3D: carros heynic (VeCarz), capacete Fabianmml, luva layne — CC BY 4.0", 14, UIKit.MUTED)
 	ver.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	ver.position = Vector2(60, -40)
 	_ui.add_child(ver)

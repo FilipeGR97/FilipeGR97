@@ -4,6 +4,19 @@ Cada patch é testado por você antes de seguirmos. Anote o que achar (bug, sens
 
 ---
 
+## Patch 7.1 — v0.7.1 (MP4/5 na Lenda, capacete e luvas de verdade)
+
+- **Categoria Lenda** agora usa o **McLaren MP4/5 (1989)** (VeCarz, CC BY 4.0), convertido do .usdz por
+  `tools/usd_to_glb.py` (sem Blender). Marcas pintadas na textura (Marlboro, Shell, Honda, Goodyear) cobertas
+  por uma máscara (`tools/paint_mask.py`): toda a área recebe a pintura da nossa equipe; patrocinadores fictícios.
+- **Capacete** de verdade (Fabianmml, CC BY 4.0) em todos os pilotos: casco com o desenho de cada piloto e o
+  desgaste do original, viseira espelhada; letreiros e pintura reais removidos.
+- **Luvas** de corrida de verdade (layne, CC BY 4.0): a mão aberta do modelo foi fechada em volta da manopla
+  (`tools/glove_grip.py`), logo removido, cor da equipe.
+- **Braços** lisos (um tubo contínuo ombro-cotovelo-punho) no lugar dos cilindros.
+
+---
+
 ## Patch 7 — v0.7.0 (modelo 3D real no carro 2026)
 
 ### Modelos enviados — checagem de licença
